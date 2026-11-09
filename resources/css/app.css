@@ -1,0 +1,79 @@
+﻿@import 'tailwindcss';
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+
+@theme {
+    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+        'Segoe UI Symbol', 'Noto Color Emoji';
+
+    /* THE NON brand: deep navy + wheat gold, warm bread neutrals */
+    --color-navy-950: #121634;
+    --color-navy-900: #1a1f48;
+    --color-navy-800: #252c5e;
+    --color-navy-700: #343d78;
+    --color-navy-600: #4a5493;
+    --color-navy-100: #e4e6f2;
+    --color-navy-50: #f3f4f9;
+
+    --color-gold-300: #f6d25f;
+    --color-gold-400: #edb41d;
+    --color-gold-500: #d99e0b;
+    --color-gold-600: #b57f08;
+
+    --color-cream-50: #fcf8f0;
+    --color-cream-100: #f6eedd;
+    --color-cream-200: #ecdfc2;
+
+    --color-crust-700: #7a4119;
+    --color-crust-500: #b8672a;
+}
+
+/* CRM building blocks */
+@utility crm-input {
+    @apply block w-full rounded-xl border border-navy-100 bg-navy-50/50 px-4 py-2.5 text-navy-900 outline-none transition placeholder:text-navy-600/50 focus:border-gold-400 focus:bg-white focus:ring-4 focus:ring-gold-400/20;
+}
+
+@utility crm-btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition disabled:opacity-60;
+}
+
+@utility crm-btn-primary {
+    @apply crm-btn bg-navy-800 text-white hover:bg-navy-700;
+}
+
+@utility crm-btn-gold {
+    @apply crm-btn bg-gold-400 text-navy-950 hover:bg-gold-300;
+}
+
+@utility crm-btn-secondary {
+    @apply crm-btn border border-navy-100 bg-white text-navy-800 hover:bg-navy-50;
+}
+
+@utility crm-btn-ghost {
+    @apply rounded-lg px-2.5 py-1.5 text-sm font-medium text-navy-700 transition hover:bg-navy-50 hover:text-navy-950;
+}
+
+@utility crm-card {
+    @apply rounded-2xl bg-white ring-1 ring-navy-100;
+}
+
+@utility crm-th {
+    @apply px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-navy-600;
+}
+
+@utility crm-td {
+    @apply px-4 py-3 text-sm text-navy-800;
+}
+
+@utility crm-badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+[x-cloak] {
+    display: none !important;
+}
