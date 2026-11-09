@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\OrderStatus;
 use App\Jobs\SendTelegramMessage;
 use App\Models\Company;
 use App\Models\Employee;
@@ -189,6 +190,56 @@ class OrderFlowTest extends TestCase
         $order = Order::query()->firstOrFail();
         $this->assertNull($order->admin_notified_at);
         $this->assertNull($order->synced_1c_at);
+    }
+
+    public function test_a_draft_opened_from_history_can_be_edited(): void
+    {
+        $draft = Order::factory()->for($this->location)->create(['order_date' => '2026-11-11']);
+        $draft->lines()->create(['item_id' => $this->item->id, 'quantity' => 4]);
+
+        Livewire::test('pages::app.catalog')
+            ->call('openOrder', $draft->id)
+            ->assertSet('step', 'items')
+            ->assertSet('quantities.'.$this->item->id, 4)
+            ->call('increment', $this->item->id)
+            ->assertSet('quantities.'.$this->item->id, 5);
+
+        $this->assertSame(5, $draft->lines()->firstOrFail()->quantity);
+    }
+
+    public function test_orders_in_any_other_state_open_for_viewing_only(): void
+    {
+        foreach ([OrderStatus::Completed, OrderStatus::Accepted, OrderStatus::Done, OrderStatus::Sent, OrderStatus::Delivered] as $status) {
+            $order = Order::factory()->for($this->location)->create(['order_date' => '2026-11-12', 'status' => $status]);
+            $order->lines()->create(['item_id' => $this->item->id, 'quantity' => 4]);
+
+            Livewire::test('pages::app.catalog')
+                ->call('openOrder', $order->id)
+                ->assertSee($this->item->name_ru)
+                ->call('increment', $this->item->id)->assertForbidden();
+
+            $order->delete();
+        }
+    }
+
+    public function test_a_draft_for_a_past_date_is_view_only(): void
+    {
+        $draft = Order::factory()->for($this->location)->create(['order_date' => '2026-11-05']);
+        $draft->lines()->create(['item_id' => $this->item->id, 'quantity' => 4]);
+
+        Livewire::test('pages::app.catalog')
+            ->call('openOrder', $draft->id)
+            ->assertSee(__('order.past_title', [], 'ru'))
+            ->call('increment', $this->item->id)->assertForbidden();
+
+        $this->assertSame(4, $draft->lines()->firstOrFail()->quantity);
+    }
+
+    public function test_an_order_of_another_location_cannot_be_opened(): void
+    {
+        $foreign = Order::factory()->create();
+
+        Livewire::test('pages::app.catalog')->call('openOrder', $foreign->id)->assertNotFound();
     }
 
     public function test_order_preview_opens_by_uuid_without_login(): void

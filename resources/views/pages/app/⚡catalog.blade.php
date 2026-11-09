@@ -74,12 +74,12 @@ new #[Layout('layouts::app')] class extends Component
     }
 
     /**
-     * The order date actually in effect: the chosen one when it is still allowed, otherwise the earliest date.
+     * The order date in effect: the chosen one when it is a valid date (so past orders can be opened to view), otherwise the earliest date.
      */
     #[Computed]
     public function selectedDate(): string
     {
-        return $this->dateIsAllowed($this->orderDate) ? $this->orderDate : $this->earliestDate->toDateString();
+        return CarbonImmutable::canBeCreatedFromFormat($this->orderDate, 'Y-m-d') ? $this->orderDate : $this->earliestDate->toDateString();
     }
 
     #[Computed]
@@ -142,6 +142,15 @@ new #[Layout('layouts::app')] class extends Component
     public function locked(): bool
     {
         return $this->order !== null && $this->order->status !== OrderStatus::Draft;
+    }
+
+    /**
+     * Only a draft on a date that can still be ordered for may be edited; everything else is view-only.
+     */
+    #[Computed]
+    public function readOnly(): bool
+    {
+        return $this->locked || ! $this->dateIsAllowed($this->selectedDate);
     }
 
     /**
@@ -227,6 +236,22 @@ new #[Layout('layouts::app')] class extends Component
             ],
         ], ['orderDate.*' => __('order.date_invalid')]);
 
+        $this->reset('search', 'category', 'notice');
+        $this->forgetCaches();
+        $this->loadQuantities();
+        $this->step = 'items';
+    }
+
+    /**
+     * Open an order from the history: a draft opens for editing, every other state opens for viewing only.
+     */
+    public function openOrder(int $orderId): void
+    {
+        $order = Order::query()->whereKey($orderId)->whereIn('location_id', $this->locations->modelKeys())->firstOrFail();
+
+        $this->locationId = $order->location_id;
+        $this->orderDate = $order->order_date->toDateString();
+        $this->tab = 'catalog';
         $this->reset('search', 'category', 'notice');
         $this->forgetCaches();
         $this->loadQuantities();
@@ -443,7 +468,7 @@ new #[Layout('layouts::app')] class extends Component
 
     private function forgetCaches(): void
     {
-        unset($this->selectedDate, $this->isToday, $this->order, $this->locked, $this->closed, $this->cutoffLabel, $this->cartItems, $this->history);
+        unset($this->selectedDate, $this->isToday, $this->order, $this->locked, $this->readOnly, $this->closed, $this->cutoffLabel, $this->cartItems, $this->history);
     }
 
     public function money(mixed $price): string
@@ -486,10 +511,10 @@ new #[Layout('layouts::app')] class extends Component
         @elseif ($tab === 'history')
             @forelse ($this->history as $past)
                 <div wire:key="history-{{ $past->id }}" class="crm-card flex items-center justify-between gap-3 px-4 py-3">
-                    <div>
-                        <p class="font-medium text-navy-800">{{ $past->order_date->format('d.m.Y') }}</p>
-                        <p class="text-xs text-navy-600">{{ __('order.positions', ['count' => $past->lines_count]) }} · {{ (int) $past->lines_sum_quantity }}</p>
-                    </div>
+                    <button type="button" wire:click="openOrder({{ $past->id }})" class="min-w-0 flex-1 text-left">
+                        <span class="block font-medium text-navy-800">{{ $past->order_date->format('d.m.Y') }}</span>
+                        <span class="block text-xs text-navy-600">{{ __('order.positions', ['count' => $past->lines_count]) }} · {{ (int) $past->lines_sum_quantity }}</span>
+                    </button>
                     <div class="flex shrink-0 flex-col items-end gap-2">
                         <span class="crm-badge bg-navy-100 text-navy-800">{{ $past->status->label() }}</span>
                         @if ($past->status === \App\Enums\OrderStatus::Sent)
@@ -536,7 +561,7 @@ new #[Layout('layouts::app')] class extends Component
             </div>
 
             <button type="button" wire:click="startOrder" wire:loading.attr="disabled" class="crm-btn-gold w-full justify-center">{{ __('order.continue') }}</button>
-        @elseif ($this->locked || $this->closed)
+        @elseif ($this->readOnly || $this->closed)
             <div class="rounded-2xl bg-gold-300/25 px-4 py-4 text-sm text-crust-700">
                 @if ($this->locked)
                     <p class="font-semibold">{{ __('order.already_title') }}</p>
@@ -545,6 +570,9 @@ new #[Layout('layouts::app')] class extends Component
                     @if ($this->order->status === \App\Enums\OrderStatus::Sent)
                         <button type="button" wire:click="confirmDelivery({{ $this->order->id }})" class="crm-btn-gold mt-3">{{ __('order.confirm_delivery') }}</button>
                     @endif
+                @elseif ($this->readOnly)
+                    <p class="font-semibold">{{ __('order.past_title') }}</p>
+                    <p class="mt-1">{{ __('order.past_text', ['phone' => config('crm.support_phone')]) }}</p>
                 @else
                     <p class="font-semibold">{{ __('order.closed_title') }}</p>
                     <p class="mt-1">{{ __('order.closed_text', ['phone' => config('crm.support_phone')]) }}</p>
@@ -641,7 +669,7 @@ new #[Layout('layouts::app')] class extends Component
         @endif
     </main>
 
-    @if ($this->location && $step === 'items' && ! $this->locked && ! $this->closed && $tab === 'catalog')
+    @if ($this->location && $step === 'items' && ! $this->readOnly && ! $this->closed && $tab === 'catalog')
         {{-- Sticky cart bar --}}
         <div class="fixed inset-x-0 bottom-0 z-40 border-t border-navy-100 bg-white/95 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur">
             <div class="mx-auto flex max-w-2xl items-center gap-3">

@@ -34,6 +34,7 @@ Route::prefix('crm')->name('crm.')->group(function () {
         Route::livewire('reports', 'pages::crm.reports')->name('reports');
         Route::get('reports/export', ReportExportController::class)->name('reports.export');
         Route::livewire('settings', 'pages::crm.settings')->name('settings');
+        Route::livewire('system', 'pages::crm.system')->name('system');
         Route::livewire('orders/{order}', 'pages::crm.orders.show')->name('orders.show');
 
         Route::post('logout', function (Request $request) {

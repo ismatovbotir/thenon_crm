@@ -52,6 +52,8 @@ return [
     'change' => 'O‘zgartirish',
     'for_date' => ':date uchun buyurtma',
     'date_invalid' => 'Tanlangan sana mavjud emas.',
+    'past_title' => 'Bu sana o‘tib ketgan, buyurtmani o‘zgartirib bo‘lmaydi.',
+    'past_text' => 'Biror narsani o‘zgartirish kerak bo‘lsa, qo‘ng‘iroq qiling yoki chatga yozing: :phone',
     'confirm_delivery' => 'Yetkazilganini tasdiqlash',
     'delivery_confirmed' => 'Yetkazib berish tasdiqlandi. Rahmat!',
 ];
