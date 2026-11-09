@@ -15,4 +15,6 @@ return [
     'new' => 'Новый',
     'positions' => 'позиций: :count',
     'more' => 'и ещё :count',
+    'companies' => 'Компании',
+    'nothing' => 'Сегодня заказов не ожидается',
 ];

@@ -2,6 +2,7 @@
 
 use App\Models\TvScreen;
 use App\Services\TvBoard;
+use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -33,22 +34,44 @@ new #[Layout('layouts::tv')] class extends Component
     }
 
     /**
-     * @return array<string, mixed>
+     * One slide per company (a company's own screen has just one).
+     *
+     * @return Collection<int, array{company: App\Models\Company, board: array<string, mixed>}>
      */
     #[Computed]
-    public function board(): array
+    public function slides(): Collection
     {
-        return app(TvBoard::class)->build($this->screen()->company_id, now());
+        return app(TvBoard::class)->slides($this->screen()->company_id, now());
     }
 };
 ?>
 
-<div wire:poll.20s class="flex min-h-screen flex-col gap-6 p-6 xl:p-10"
-     x-data="{ now: new Date() }" x-init="setInterval(() => now = new Date(), 1000)">
-    @php($board = $this->board)
-    @php($screen = $this->screen())
+@php($screen = $this->screen())
+@php($slides = $this->slides)
+@php($ordered = $slides->sum(fn ($slide) => $slide['board']['ordered']))
+@php($expected = $slides->sum(fn ($slide) => $slide['board']['expected']))
+@php($rotate = $slides->count() > 1)
 
-    <header class="flex items-center justify-between gap-6">
+<div wire:poll.20s class="flex h-screen flex-col overflow-hidden"
+     x-data="{
+         i: 0,
+         started: Date.now(),
+         progress: 0,
+         now: new Date(),
+         interval: {{ TvBoard::SLIDE_SECONDS }} * 1000,
+         count() { return this.$root.querySelectorAll('[data-slide]').length },
+         next() { this.i = (this.i + 1) % Math.max(1, this.count()); this.started = Date.now() },
+         tick() {
+             this.now = new Date();
+             if (this.i >= this.count()) { this.i = 0 }
+             this.progress = Math.min(100, (Date.now() - this.started) / this.interval * 100);
+             if (this.count() > 1 && Date.now() - this.started >= this.interval) { this.next() }
+         },
+     }"
+     x-init="setInterval(() => tick(), 200)">
+
+    {{-- Header --}}
+    <header class="flex shrink-0 items-center justify-between gap-6 px-6 pb-3 pt-5 xl:px-10">
         <div class="flex items-center gap-4">
             <img src="{{ asset('images/brand/logo.jpg') }}" alt="" class="size-14 rounded-full">
             <div>
@@ -61,7 +84,7 @@ new #[Layout('layouts::tv')] class extends Component
             <div class="text-right">
                 <p class="text-sm uppercase tracking-wider text-navy-100/60">{{ __('tv.received') }}</p>
                 <p class="text-4xl font-bold xl:text-5xl">
-                    <span class="text-gold-400">{{ $board['ordered'] }}</span><span class="text-navy-100/50"> / {{ $board['expected'] }}</span>
+                    <span class="text-gold-400">{{ $ordered }}</span><span class="text-navy-100/50"> / {{ $expected }}</span>
                 </p>
             </div>
             <div class="text-right">
@@ -71,100 +94,131 @@ new #[Layout('layouts::tv')] class extends Component
         </div>
     </header>
 
-    <div class="grid flex-1 gap-6 lg:grid-cols-12">
-        {{-- Not ordered yet, most urgent first --}}
-        <section class="space-y-3 lg:col-span-4">
-            <h2 class="text-xl font-semibold uppercase tracking-wide text-red-300">{{ __('tv.missing') }} <span class="text-white/60">· {{ $board['missing']->count() }}</span></h2>
+    {{-- Company tabs with the 15 second timer --}}
+    @if ($rotate)
+        <nav class="flex shrink-0 gap-2 overflow-hidden px-6 xl:px-10" aria-label="{{ __('tv.companies') }}">
+            @foreach ($slides as $slide)
+                @php($pending = $slide['board']['missing']->count())
+                <button type="button" wire:key="tab-{{ $slide['company']->id }}" x-on:click="i = {{ $loop->index }}; started = Date.now()"
+                        class="relative min-w-0 shrink overflow-hidden rounded-xl px-4 py-2 text-left transition"
+                        :class="i === {{ $loop->index }} ? 'bg-white/20 text-white' : 'bg-white/5 text-navy-100/60'">
+                    <span class="flex items-center gap-2">
+                        <span class="truncate text-lg font-semibold">{{ $slide['company']->name }}</span>
+                        @if ($pending > 0)
+                            <span class="shrink-0 rounded-full bg-red-500 px-2 text-sm font-bold text-white">{{ $pending }}</span>
+                        @else
+                            <span class="shrink-0 text-emerald-300">✓</span>
+                        @endif
+                    </span>
+                    <span x-show="i === {{ $loop->index }}" class="absolute inset-x-0 bottom-0 h-1 bg-gold-400" :style="`width: ${progress}%`"></span>
+                </button>
+            @endforeach
+        </nav>
+    @endif
 
-            @forelse ($board['missing'] as $row)
-                @php($late = $row['minutes_left'] !== null && $row['minutes_left'] < 0)
-                @php($soon = $row['minutes_left'] !== null && $row['minutes_left'] >= 0 && $row['minutes_left'] <= 30)
-                <div wire:key="missing-{{ $row['location']->id }}" @class([
-                    'rounded-2xl border-l-8 px-5 py-4',
-                    'border-red-500 bg-red-500/20' => $late || $soon,
-                    'border-amber-400 bg-white/10' => ! $late && ! $soon,
-                ])>
-                    <div class="flex items-start justify-between gap-4">
-                        <div class="min-w-0">
-                            @if (! $screen->company_id)
-                                <p class="truncate text-sm text-navy-100/70">{{ $row['location']->company->name }}</p>
-                            @endif
-                            <p class="truncate text-2xl font-semibold">{{ $row['location']->name }}</p>
-                            @if ($row['has_draft'])
-                                <p class="text-sm text-amber-300">{{ __('tv.has_draft') }}</p>
-                            @endif
-                        </div>
-                        <div class="shrink-0 text-right">
-                            @if ($row['deadline'])
-                                <p @class(['text-2xl font-bold tabular-nums', 'text-red-300' => $late || $soon, 'text-amber-300' => ! $late && ! $soon])>
-                                    @if ($late)
-                                        {{ __('tv.late') }}
-                                    @else
-                                        {{ intdiv($row['minutes_left'], 60) }}:{{ str_pad((string) ($row['minutes_left'] % 60), 2, '0', STR_PAD_LEFT) }}
+    {{-- Slides --}}
+    <div class="min-h-0 flex-1 overflow-hidden">
+        <div class="flex h-full transition-transform duration-700 ease-in-out" :style="`transform: translateX(-${i * 100}%)`">
+            @forelse ($slides as $slide)
+                @php($board = $slide['board'])
+                <div data-slide wire:key="slide-{{ $slide['company']->id }}" class="grid h-full w-full shrink-0 gap-6 overflow-hidden px-6 py-4 lg:grid-cols-12 xl:px-10">
+
+                    {{-- Not ordered yet, most urgent first --}}
+                    <section class="min-h-0 space-y-3 overflow-hidden lg:col-span-4">
+                        <h2 class="text-xl font-semibold uppercase tracking-wide text-red-300">{{ __('tv.missing') }} <span class="text-white/60">· {{ $board['missing']->count() }}</span></h2>
+
+                        @forelse ($board['missing']->take(7) as $row)
+                            @php($late = $row['minutes_left'] !== null && $row['minutes_left'] < 0)
+                            @php($soon = $row['minutes_left'] !== null && $row['minutes_left'] >= 0 && $row['minutes_left'] <= 30)
+                            <div @class([
+                                'rounded-2xl border-l-8 px-5 py-3',
+                                'border-red-500 bg-red-500/20' => $late || $soon,
+                                'border-amber-400 bg-white/10' => ! $late && ! $soon,
+                            ])>
+                                <div class="flex items-start justify-between gap-4">
+                                    <div class="min-w-0">
+                                        <p class="truncate text-2xl font-semibold">{{ $row['location']->name }}</p>
+                                        @if ($row['has_draft'])
+                                            <p class="text-sm text-amber-300">{{ __('tv.has_draft') }}</p>
+                                        @endif
+                                    </div>
+                                    <div class="shrink-0 text-right">
+                                        @if ($row['deadline'])
+                                            <p @class(['text-2xl font-bold tabular-nums', 'text-red-300' => $late || $soon, 'text-amber-300' => ! $late && ! $soon])>
+                                                @if ($late)
+                                                    {{ __('tv.late') }}
+                                                @else
+                                                    {{ intdiv($row['minutes_left'], 60) }}:{{ str_pad((string) ($row['minutes_left'] % 60), 2, '0', STR_PAD_LEFT) }}
+                                                @endif
+                                            </p>
+                                            <p class="text-sm text-navy-100/70">{{ __('tv.until') }} {{ $row['deadline']->format('H:i') }}</p>
+                                        @else
+                                            <p class="text-sm text-navy-100/70">{{ __('tv.no_deadline') }}</p>
+                                        @endif
+                                    </div>
+                                </div>
+                            </div>
+                        @empty
+                            <p class="rounded-2xl bg-emerald-500/20 px-5 py-8 text-center text-2xl font-semibold text-emerald-200">{{ __('tv.all_ordered') }}</p>
+                        @endforelse
+
+                        @if ($board['missing']->count() > 7)
+                            <p class="text-center text-sm text-navy-100/60">{{ __('tv.more', ['count' => $board['missing']->count() - 7]) }}</p>
+                        @endif
+                    </section>
+
+                    {{-- Orders received, newest first --}}
+                    <section class="min-h-0 space-y-3 overflow-hidden lg:col-span-5">
+                        <h2 class="text-xl font-semibold uppercase tracking-wide text-gold-400">{{ __('tv.orders') }} <span class="text-white/60">· {{ $board['orders']->count() }}</span></h2>
+
+                        @forelse ($board['orders']->take(7) as $row)
+                            @php($order = $row['order'])
+                            <div @class([
+                                'flex items-center justify-between gap-4 rounded-2xl px-5 py-3',
+                                'animate-pulse bg-gold-400/30 ring-2 ring-gold-400' => $row['is_new'],
+                                'bg-white/10' => ! $row['is_new'],
+                            ])>
+                                <div class="min-w-0">
+                                    <p class="truncate text-2xl font-semibold">{{ $order->location->name }}</p>
+                                    <p class="text-sm text-navy-100/70">
+                                        {{ ($order->completed_at ?? $order->updated_at)->format('H:i') }} · {{ __('tv.positions', ['count' => $row['positions']]) }} · {{ $row['quantity'] }}
+                                    </p>
+                                </div>
+                                <div class="flex shrink-0 flex-col items-end gap-1">
+                                    @if ($row['is_new'])
+                                        <span class="rounded-full bg-gold-400 px-3 py-0.5 text-sm font-bold uppercase text-navy-950">{{ __('tv.new') }}</span>
                                     @endif
-                                </p>
-                                <p class="text-sm text-navy-100/70">{{ __('tv.until') }} {{ $row['deadline']->format('H:i') }}</p>
-                            @else
-                                <p class="text-sm text-navy-100/70">{{ __('tv.no_deadline') }}</p>
-                            @endif
+                                    <span class="rounded-full bg-white/15 px-3 py-1 text-base font-medium">{{ $order->status->label() }}</span>
+                                </div>
+                            </div>
+                        @empty
+                            <p class="rounded-2xl bg-white/10 px-5 py-8 text-center text-xl text-navy-100/70">{{ __('tv.no_orders') }}</p>
+                        @endforelse
+
+                        @if ($board['orders']->count() > 7)
+                            <p class="text-center text-sm text-navy-100/60">{{ __('tv.more', ['count' => $board['orders']->count() - 7]) }}</p>
+                        @endif
+                    </section>
+
+                    {{-- Quantities to prepare --}}
+                    <section class="min-h-0 space-y-3 overflow-hidden lg:col-span-3">
+                        <h2 class="text-xl font-semibold uppercase tracking-wide text-emerald-300">{{ __('tv.totals') }}</h2>
+
+                        <div class="divide-y divide-white/10 rounded-2xl bg-white/10">
+                            @forelse ($board['totals']->take(10) as $total)
+                                <div class="flex items-baseline justify-between gap-4 px-5 py-2.5">
+                                    <p class="min-w-0 truncate text-xl">{{ $total['name'] }}</p>
+                                    <p class="shrink-0 text-2xl font-bold tabular-nums">{{ $total['quantity'] }} <span class="text-base font-normal text-navy-100/70">{{ $total['unit'] }}</span></p>
+                                </div>
+                            @empty
+                                <p class="px-5 py-8 text-center text-xl text-navy-100/70">—</p>
+                            @endforelse
                         </div>
-                    </div>
+                    </section>
                 </div>
             @empty
-                <p class="rounded-2xl bg-emerald-500/20 px-5 py-8 text-center text-2xl font-semibold text-emerald-200">{{ __('tv.all_ordered') }}</p>
+                <p class="flex h-full w-full items-center justify-center text-3xl text-navy-100/70">{{ __('tv.nothing') }}</p>
             @endforelse
-        </section>
-
-        {{-- Orders received, newest first --}}
-        <section class="space-y-3 lg:col-span-5">
-            <h2 class="text-xl font-semibold uppercase tracking-wide text-gold-400">{{ __('tv.orders') }} <span class="text-white/60">· {{ $board['orders']->count() }}</span></h2>
-
-            @forelse ($board['orders']->take(10) as $row)
-                @php($order = $row['order'])
-                <div wire:key="order-{{ $order->id }}" @class([
-                    'flex items-center justify-between gap-4 rounded-2xl px-5 py-4',
-                    'animate-pulse bg-gold-400/30 ring-2 ring-gold-400' => $row['is_new'],
-                    'bg-white/10' => ! $row['is_new'],
-                ])>
-                    <div class="min-w-0">
-                        @if (! $screen->company_id)
-                            <p class="truncate text-sm text-navy-100/70">{{ $order->location->company->name }}</p>
-                        @endif
-                        <p class="truncate text-2xl font-semibold">{{ $order->location->name }}</p>
-                        <p class="text-sm text-navy-100/70">
-                            {{ ($order->completed_at ?? $order->updated_at)->format('H:i') }} · {{ __('tv.positions', ['count' => $row['positions']]) }} · {{ $row['quantity'] }}
-                        </p>
-                    </div>
-                    <div class="flex shrink-0 flex-col items-end gap-1">
-                        @if ($row['is_new'])
-                            <span class="rounded-full bg-gold-400 px-3 py-0.5 text-sm font-bold uppercase text-navy-950">{{ __('tv.new') }}</span>
-                        @endif
-                        <span class="rounded-full bg-white/15 px-3 py-1 text-base font-medium">{{ $order->status->label() }}</span>
-                    </div>
-                </div>
-            @empty
-                <p class="rounded-2xl bg-white/10 px-5 py-8 text-center text-xl text-navy-100/70">{{ __('tv.no_orders') }}</p>
-            @endforelse
-
-            @if ($board['orders']->count() > 10)
-                <p class="text-center text-sm text-navy-100/60">{{ __('tv.more', ['count' => $board['orders']->count() - 10]) }}</p>
-            @endif
-        </section>
-
-        {{-- Quantities to prepare --}}
-        <section class="space-y-3 lg:col-span-3">
-            <h2 class="text-xl font-semibold uppercase tracking-wide text-emerald-300">{{ __('tv.totals') }}</h2>
-
-            <div class="divide-y divide-white/10 rounded-2xl bg-white/10">
-                @forelse ($board['totals']->take(14) as $total)
-                    <div wire:key="total-{{ $loop->index }}" class="flex items-baseline justify-between gap-4 px-5 py-3">
-                        <p class="min-w-0 truncate text-xl">{{ $total['name'] }}</p>
-                        <p class="shrink-0 text-2xl font-bold tabular-nums">{{ $total['quantity'] }} <span class="text-base font-normal text-navy-100/70">{{ $total['unit'] }}</span></p>
-                    </div>
-                @empty
-                    <p class="px-5 py-8 text-center text-xl text-navy-100/70">—</p>
-                @endforelse
-            </div>
-        </section>
+        </div>
     </div>
 </div>

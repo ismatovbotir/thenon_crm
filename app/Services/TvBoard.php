@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\OrderStatus;
+use App\Models\Company;
 use App\Models\Location;
 use App\Models\Order;
 use Carbon\CarbonImmutable;
@@ -17,6 +18,27 @@ class TvBoard
 {
     /** Orders completed this recently are highlighted as new. */
     public const NEW_SECONDS = 120;
+
+    /** How long each company stays on the screen before the next one slides in. */
+    public const SLIDE_SECONDS = 15;
+
+    /**
+     * One slide per company for the wall screen: a company's own screen has a single slide,
+     * an all-companies screen has a slide for every company that has locations expected to order.
+     *
+     * @return Collection<int, array{company: Company, board: array<string, mixed>}>
+     */
+    public function slides(?int $companyId, CarbonInterface $now): Collection
+    {
+        return Company::query()
+            ->when($companyId, fn ($query, $id) => $query->whereKey($id))
+            ->whereHas('locations', fn ($query) => $query->where('is_active', true))
+            ->orderBy('name')
+            ->get()
+            ->map(fn (Company $company) => ['company' => $company, 'board' => $this->build($company->id, $now)])
+            ->filter(fn (array $slide) => $slide['board']['expected'] > 0 || $slide['board']['orders']->isNotEmpty())
+            ->values();
+    }
 
     /**
      * @return array{

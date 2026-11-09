@@ -15,4 +15,6 @@ return [
     'new' => 'Yangi',
     'positions' => 'pozitsiyalar: :count',
     'more' => 'va yana :count',
+    'companies' => 'Kompaniyalar',
+    'nothing' => 'Bugun buyurtmalar kutilmayapti',
 ];

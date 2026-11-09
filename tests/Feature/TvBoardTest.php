@@ -186,4 +186,36 @@ class TvBoardTest extends TestCase
         Livewire::test('pages::crm.tv')->call('remove', $screen->id);
         $this->assertDatabaseCount('tv_screens', 0);
     }
+
+    public function test_an_all_companies_screen_has_a_slide_per_company_and_rotates_every_15_seconds(): void
+    {
+        foreach (['Beta', 'Alpha'] as $name) {
+            Location::factory()->for(Company::factory()->create(['name' => $name]))->create(['name' => $name.' branch']);
+        }
+        Company::factory()->create(['name' => 'Empty']);
+        $screen = TvScreen::factory()->create();
+
+        $slides = app(TvBoard::class)->slides(null, now());
+
+        $this->assertSame(['Alpha', 'Beta'], $slides->map(fn ($slide) => $slide['company']->name)->all());
+        $this->assertSame(15, TvBoard::SLIDE_SECONDS);
+
+        $this->get($screen->url())
+            ->assertOk()
+            ->assertSee('Alpha branch')
+            ->assertSee('Beta branch')
+            ->assertSee('15 * 1000', false);
+    }
+
+    public function test_a_company_screen_has_a_single_slide(): void
+    {
+        $mine = Company::factory()->create(['name' => 'Mine']);
+        Location::factory()->for($mine)->create();
+        Location::factory()->for(Company::factory()->create(['name' => 'Other']))->create();
+
+        $slides = app(TvBoard::class)->slides($mine->id, now());
+
+        $this->assertCount(1, $slides);
+        $this->assertSame('Mine', $slides->first()['company']->name);
+    }
 }
