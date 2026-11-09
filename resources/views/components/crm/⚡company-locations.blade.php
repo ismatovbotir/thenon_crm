@@ -24,6 +24,8 @@ new class extends Component
 
     public string $address = '';
 
+    public string $yandexUrl = '';
+
     public ?int $defaultEmployeeId = null;
 
     public function openSchedule(int $id): void
@@ -77,7 +79,7 @@ new class extends Component
 
     public function create(): void
     {
-        $this->reset('editingId', 'name', 'address', 'defaultEmployeeId');
+        $this->reset('editingId', 'name', 'address', 'yandexUrl', 'defaultEmployeeId');
         $this->resetValidation();
         $this->showForm = true;
     }
@@ -90,6 +92,7 @@ new class extends Component
         $this->editingId = $location->id;
         $this->name = $location->name;
         $this->address = (string) $location->address;
+        $this->yandexUrl = (string) $location->yandex_url;
         $this->defaultEmployeeId = $location->default_employee_id;
         $this->showForm = true;
     }
@@ -107,6 +110,7 @@ new class extends Component
                 Rule::unique('locations', 'name')->where('company_id', $this->companyId)->ignore($this->editingId),
             ],
             'address' => ['nullable', 'string', 'max:255'],
+            'yandexUrl' => ['nullable', 'url:https', 'max:500', 'regex:~^https://([a-z0-9-]+\.)*yandex\.[a-z]{2,3}(\.[a-z]{2})?/~i'],
             'defaultEmployeeId' => [
                 'nullable', 'integer',
                 Rule::exists('employee_location', 'employee_id')->where('location_id', $this->editingId ?? 0),
@@ -116,6 +120,7 @@ new class extends Component
         $attributes = [
             'name' => $data['name'],
             'address' => $data['address'] ?: null,
+            'yandex_url' => $data['yandexUrl'] ?: null,
             'default_employee_id' => $data['defaultEmployeeId'] ?? null,
         ];
 
@@ -167,7 +172,12 @@ new class extends Component
                         @foreach ($this->locations as $location)
                             <tr wire:key="location-{{ $location->id }}" class="hover:bg-navy-50/40">
                                 <td class="crm-td font-medium">{{ $location->name }}</td>
-                                <td class="crm-td">{{ $location->address ?: __('crm.common.none') }}</td>
+                                <td class="crm-td">
+                                    {{ $location->address ?: __('crm.common.none') }}
+                                    @if ($location->yandex_url)
+                                        <a href="{{ $location->yandex_url }}" target="_blank" rel="noopener noreferrer" class="ml-1 text-xs font-medium text-gold-600 hover:underline">{{ __('crm.locations.map') }}</a>
+                                    @endif
+                                </td>
                                 <td class="crm-td">{{ $location->defaultEmployee?->name ?? __('crm.common.none') }}</td>
                                 <td class="crm-td">{{ $location->employees_count }}</td>
                                 <td class="crm-td">
@@ -200,6 +210,9 @@ new class extends Component
                 </x-crm.field>
                 <x-crm.field name="address" :label="__('crm.common.address')">
                     <input id="address" type="text" wire:model="address" class="crm-input">
+                </x-crm.field>
+                <x-crm.field name="yandexUrl" :label="__('crm.locations.yandex_url')" :hint="__('crm.locations.yandex_hint')">
+                    <input id="yandexUrl" type="url" wire:model="yandexUrl" placeholder="https://yandex.uz/maps/..." class="crm-input">
                 </x-crm.field>
                 @if ($editingId)
                     <x-crm.field name="defaultEmployeeId" :label="__('crm.locations.default_employee')" :hint="__('crm.locations.default_hint')">

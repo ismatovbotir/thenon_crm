@@ -8,6 +8,7 @@ use App\Jobs\SendTelegramMessage;
 use App\Models\Employee;
 use App\Models\Location;
 use App\Models\Order;
+use Illuminate\Support\Facades\App;
 
 class OrderNotifier
 {
@@ -18,6 +19,10 @@ class OrderNotifier
     {
         if (in_array($order->status, [OrderStatus::Draft, OrderStatus::Delivered], true)) {
             return;
+        }
+
+        if ($order->status === OrderStatus::Completed) {
+            $this->notifyAdmin($order);
         }
 
         $order->loadMissing('location.defaultEmployee');
@@ -45,6 +50,54 @@ class OrderNotifier
             $text,
             $isSent ? __('telegram.open_app', [], $language->value) : null,
         );
+    }
+
+    /**
+     * Send the administrator a plain-text copy of a freshly completed order.
+     */
+    public function notifyAdmin(Order $order): void
+    {
+        $adminId = config('telegram.admin_chat_id');
+
+        if ($adminId === null || $adminId === '') {
+            return;
+        }
+
+        $order->loadMissing('location.company', 'employee', 'lines.item');
+
+        $previousLocale = App::getLocale();
+        App::setLocale('ru');
+
+        try {
+            $text = $this->adminOrderText($order);
+        } finally {
+            App::setLocale($previousLocale);
+        }
+
+        SendTelegramMessage::dispatch((int) $adminId, mb_substr($text, 0, 4000));
+    }
+
+    /**
+     * The administrator's order summary, always in Russian.
+     */
+    private function adminOrderText(Order $order): string
+    {
+        $lines = $order->lines
+            ->map(fn ($line) => '• '.$line->item->name_ru.' — '.$line->quantity.' '.$line->item->unit->label())
+            ->implode(PHP_EOL);
+
+        $location = $order->location;
+
+        return __('telegram.notify.admin_order', [
+            'date' => $order->order_date->format('d.m.Y'),
+            'company' => $location->company->name,
+            'location' => $location->name,
+            'address' => $location->address ?: '—',
+            'map' => $location->yandex_url ? PHP_EOL.$location->yandex_url : '',
+            'employee' => $order->employee?->name ?? '—',
+            'lines' => $lines,
+            'positions' => $order->lines->count(),
+        ]);
     }
 
     /**

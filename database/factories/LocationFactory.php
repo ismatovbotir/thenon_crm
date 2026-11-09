@@ -20,6 +20,7 @@ class LocationFactory extends Factory
             'company_id' => Company::factory(),
             'name' => fake()->unique()->streetName(),
             'address' => fake()->address(),
+            'yandex_url' => null,
             'default_employee_id' => null,
             'is_active' => true,
         ];

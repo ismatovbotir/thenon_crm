@@ -6,6 +6,7 @@ use App\Models\Employee;
 use App\Models\Item;
 use App\Models\Location;
 use App\Models\Order;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Computed;
@@ -19,6 +20,10 @@ new #[Layout('layouts::app')] class extends Component
 
     #[Locked]
     public ?int $locationId = null;
+
+    public string $step = 'setup';
+
+    public string $orderDate = '';
 
     public string $tab = 'catalog';
 
@@ -34,6 +39,7 @@ new #[Layout('layouts::app')] class extends Component
     public function mount(): void
     {
         $this->locationId = $this->locations->first()?->id;
+        $this->orderDate = $this->earliestDate->toDateString();
         $this->loadQuantities();
     }
 
@@ -49,6 +55,36 @@ new #[Layout('layouts::app')] class extends Component
             ->whereKey(session(EnsureEmployeeAccess::SESSION_KEY.'.id'))
             ->where('is_active', true)
             ->firstOrFail();
+    }
+
+    /**
+     * First date the company may order for (tomorrow once the company's evening time has passed).
+     */
+    #[Computed]
+    public function earliestDate(): CarbonImmutable
+    {
+        return $this->employee->company->earliestOrderDate(now());
+    }
+
+    #[Computed]
+    public function latestDate(): CarbonImmutable
+    {
+        return $this->employee->company->latestOrderDate(now());
+    }
+
+    /**
+     * The order date actually in effect: the chosen one when it is still allowed, otherwise the earliest date.
+     */
+    #[Computed]
+    public function selectedDate(): string
+    {
+        return $this->dateIsAllowed($this->orderDate) ? $this->orderDate : $this->earliestDate->toDateString();
+    }
+
+    #[Computed]
+    public function isToday(): bool
+    {
+        return $this->selectedDate === today()->toDateString();
     }
 
     /**
@@ -73,7 +109,7 @@ new #[Layout('layouts::app')] class extends Component
     public function order(): ?Order
     {
         return $this->location
-            ? Order::query()->with('lines.item')->where('location_id', $this->location->id)->whereDate('order_date', today())->first()
+            ? Order::query()->with('lines.item')->where('location_id', $this->location->id)->whereDate('order_date', $this->selectedDate)->first()
             : null;
     }
 
@@ -83,7 +119,7 @@ new #[Layout('layouts::app')] class extends Component
     #[Computed]
     public function closed(): bool
     {
-        return $this->location?->isOrderingClosed(now()) ?? false;
+        return $this->isToday && ($this->location?->isOrderingClosed(now()) ?? false);
     }
 
     /**
@@ -92,6 +128,10 @@ new #[Layout('layouts::app')] class extends Component
     #[Computed]
     public function cutoffLabel(): ?string
     {
+        if (! $this->isToday) {
+            return null;
+        }
+
         $rule = $this->location?->cutoffFor(now());
 
         return $rule?->is_open ? $rule->cutoffTimeLabel() : null;
@@ -174,6 +214,32 @@ new #[Layout('layouts::app')] class extends Component
         $this->loadQuantities();
     }
 
+    /**
+     * Confirm the location and date chosen on the first screen and move on to the item list.
+     */
+    public function startOrder(): void
+    {
+        abort_unless($this->location, 403);
+
+        $this->validate([
+            'orderDate' => [
+                'required', 'date_format:Y-m-d',
+                'after_or_equal:'.$this->earliestDate->toDateString(),
+                'before_or_equal:'.$this->latestDate->toDateString(),
+            ],
+        ], ['orderDate.*' => __('order.date_invalid')]);
+
+        $this->reset('search', 'category', 'notice');
+        $this->forgetCaches();
+        $this->loadQuantities();
+        $this->step = 'items';
+    }
+
+    public function backToSetup(): void
+    {
+        $this->step = 'setup';
+    }
+
     public function increment(int $itemId): void
     {
         $item = $this->assignable($itemId);
@@ -218,7 +284,7 @@ new #[Layout('layouts::app')] class extends Component
         $this->persist();
 
         DB::transaction(function () {
-            $order = Order::query()->where('location_id', $this->locationId)->whereDate('order_date', today())->lockForUpdate()->firstOrFail();
+            $order = Order::query()->where('location_id', $this->locationId)->whereDate('order_date', $this->selectedDate)->lockForUpdate()->firstOrFail();
 
             if ($order->status !== OrderStatus::Draft) {
                 return;
@@ -255,7 +321,7 @@ new #[Layout('layouts::app')] class extends Component
 
         $last = Order::query()->with('lines')
             ->where('location_id', $this->locationId)
-            ->whereDate('order_date', '<', today())
+            ->whereDate('order_date', '<', $this->selectedDate)
             ->where('status', '!=', OrderStatus::Draft->value)
             ->orderByDesc('order_date')->first();
 
@@ -290,8 +356,20 @@ new #[Layout('layouts::app')] class extends Component
     private function ensureEditable(): void
     {
         abort_unless($this->location, 403);
+        abort_unless($this->dateIsAllowed($this->orderDate), 403);
         abort_if($this->locked, 403);
         abort_if($this->closed, 403);
+    }
+
+    private function dateIsAllowed(string $date): bool
+    {
+        if (! CarbonImmutable::canBeCreatedFromFormat($date, 'Y-m-d')) {
+            return false;
+        }
+
+        $day = CarbonImmutable::createFromFormat('Y-m-d', $date)->startOfDay();
+
+        return $day->gte($this->earliestDate) && $day->lte($this->latestDate);
     }
 
     private function normalize(Item $item, int $quantity): int
@@ -322,7 +400,7 @@ new #[Layout('layouts::app')] class extends Component
     private function persist(): void
     {
         DB::transaction(function () {
-            $order = Order::query()->where('location_id', $this->locationId)->whereDate('order_date', today())->lockForUpdate()->first();
+            $order = Order::query()->where('location_id', $this->locationId)->whereDate('order_date', $this->selectedDate)->lockForUpdate()->first();
 
             if (! $order && $this->quantities === []) {
                 return;
@@ -331,7 +409,7 @@ new #[Layout('layouts::app')] class extends Component
             $order ??= Order::query()->create([
                 'location_id' => $this->locationId,
                 'employee_id' => $this->employee->id,
-                'order_date' => today(),
+                'order_date' => $this->selectedDate,
                 'status' => OrderStatus::Draft,
             ]);
 
@@ -367,7 +445,7 @@ new #[Layout('layouts::app')] class extends Component
 
     private function forgetCaches(): void
     {
-        unset($this->order, $this->locked, $this->cartItems, $this->history);
+        unset($this->selectedDate, $this->isToday, $this->order, $this->locked, $this->closed, $this->cutoffLabel, $this->cartItems, $this->history);
     }
 
     public function money(mixed $price): string
@@ -384,14 +462,12 @@ new #[Layout('layouts::app')] class extends Component
             <div class="min-w-0 flex-1">
                 <p class="truncate text-sm font-semibold">{{ $this->location?->name ?? __('order.no_location') }}</p>
                 <p class="truncate text-xs text-navy-100">{{ $this->employee->company->name }} · {{ $this->employee->name }}</p>
+                @if ($step === 'items' && $tab === 'catalog' && $this->location)
+                    <p class="truncate text-xs font-semibold text-gold-300">{{ __('order.for_date', ['date' => \Carbon\Carbon::parse($this->selectedDate)->format('d.m.Y')]) }}</p>
+                @endif
             </div>
-            @if ($this->locations->count() > 1)
-                <select wire:change="selectLocation($event.target.value)" aria-label="{{ __('order.location') }}"
-                        class="max-w-32 rounded-lg border-0 bg-navy-800 py-1.5 text-sm text-white focus:ring-2 focus:ring-gold-400">
-                    @foreach ($this->locations as $location)
-                        <option value="{{ $location->id }}" @selected($location->id === $locationId)>{{ $location->name }}</option>
-                    @endforeach
-                </select>
+            @if ($step === 'items' && $tab === 'catalog' && $this->location)
+                <button type="button" wire:click="backToSetup" class="shrink-0 rounded-lg bg-navy-800 px-3 py-1.5 text-xs font-semibold text-white focus:ring-2 focus:ring-gold-400">{{ __('order.change') }}</button>
             @endif
         </div>
 
@@ -426,6 +502,42 @@ new #[Layout('layouts::app')] class extends Component
             @empty
                 <p class="crm-card px-4 py-8 text-center text-sm text-navy-600">{{ __('order.no_history') }}</p>
             @endforelse
+        @elseif ($step === 'setup')
+            <h2 class="text-lg font-semibold text-navy-800">{{ __('order.new_order') }}</h2>
+
+            <div class="space-y-2">
+                <p class="text-sm font-medium text-navy-800">{{ __('order.choose_location') }}</p>
+                @foreach ($this->locations as $option)
+                    <div wire:key="setup-location-{{ $option->id }}" @class(['crm-card p-3', 'ring-2 ring-gold-400' => $option->id === $locationId])>
+                        <button type="button" wire:click="selectLocation({{ $option->id }})" class="block w-full text-left">
+                            <span class="block font-medium text-navy-800">{{ $option->name }}</span>
+                            @if ($option->address)
+                                <span class="mt-0.5 block text-xs text-navy-600">{{ $option->address }}</span>
+                            @endif
+                        </button>
+                        @if ($option->yandex_url)
+                            <a href="{{ $option->yandex_url }}" target="_blank" rel="noopener noreferrer" class="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-gold-600 hover:underline">
+                                <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>
+                                {{ __('order.open_map') }}
+                            </a>
+                        @endif
+                    </div>
+                @endforeach
+            </div>
+
+            <div class="space-y-1.5">
+                <label for="orderDate" class="block text-sm font-medium text-navy-800">{{ __('order.order_date') }}</label>
+                <input id="orderDate" type="date" wire:model="orderDate" min="{{ $this->earliestDate->toDateString() }}" max="{{ $this->latestDate->toDateString() }}" class="crm-input">
+                <p class="text-xs text-navy-600">{{ __('order.order_date_hint', ['from' => $this->earliestDate->format('d.m.Y'), 'to' => $this->latestDate->format('d.m.Y')]) }}</p>
+                @if ($this->employee->company->next_day_enabled)
+                    <p class="text-xs text-navy-600">{{ __('order.next_day_notice', ['time' => $this->employee->company->next_day_from]) }}</p>
+                @endif
+                @error('orderDate')
+                    <p class="text-sm text-red-600">{{ $message }}</p>
+                @enderror
+            </div>
+
+            <button type="button" wire:click="startOrder" wire:loading.attr="disabled" class="crm-btn-gold w-full justify-center">{{ __('order.continue') }}</button>
         @elseif ($this->locked || $this->closed)
             <div class="rounded-2xl bg-gold-300/25 px-4 py-4 text-sm text-crust-700">
                 @if ($this->locked)
@@ -531,7 +643,7 @@ new #[Layout('layouts::app')] class extends Component
         @endif
     </main>
 
-    @if ($this->location && ! $this->locked && ! $this->closed && $tab === 'catalog')
+    @if ($this->location && $step === 'items' && ! $this->locked && ! $this->closed && $tab === 'catalog')
         {{-- Sticky cart bar --}}
         <div class="fixed inset-x-0 bottom-0 z-40 border-t border-navy-100 bg-white/95 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur">
             <div class="mx-auto flex max-w-2xl items-center gap-3">

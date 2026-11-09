@@ -21,6 +21,12 @@ return [
     'webhook_secret' => env('TELEGRAM_WEBHOOK_SECRET'),
 
     /*
+    | Telegram chat id of the administrator who receives a text copy of every completed order.
+    | The admin must have started the bot first. Leave empty to disable.
+    */
+    'admin_chat_id' => env('TELEGRAM_ADMIN_ID'),
+
+    /*
     | Public https URL of the ordering web app opened from the bot.
     */
     'web_app_url' => env('TELEGRAM_WEB_APP_URL'),

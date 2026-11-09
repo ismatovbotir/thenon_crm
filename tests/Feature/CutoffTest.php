@@ -96,6 +96,7 @@ class CutoffTest extends TestCase
         $this->at('19:00');
 
         Livewire::test('pages::app.catalog')
+            ->call('startOrder')
             ->assertSee(__('order.closed_title', [], 'ru'))
             ->call('increment', $this->item->id)->assertForbidden();
 
@@ -108,6 +109,7 @@ class CutoffTest extends TestCase
         $this->at('09:00');
 
         Livewire::test('pages::app.catalog')
+            ->call('startOrder')
             ->assertSee('18:00')
             ->call('increment', $this->item->id)->assertOk();
 

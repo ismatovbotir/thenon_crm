@@ -10,6 +10,7 @@ use App\Models\Location;
 use App\Models\Order;
 use App\Models\OrderItem;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
 use Tests\TestCase;
@@ -30,6 +31,8 @@ class OrderingTest extends TestCase
     {
         parent::setUp();
 
+        Carbon::setTestNow(today()->setTime(10, 0));
+
         $this->company = Company::factory()->create();
         $this->employee = Employee::factory()->registered()->for($this->company)->create(['language' => 'ru']);
         $this->location = Location::factory()->for($this->company)->create();
@@ -39,6 +42,13 @@ class OrderingTest extends TestCase
         $this->company->items()->attach($this->baguette, ['price' => 1500]);
 
         $this->signIn($this->employee);
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+
+        parent::tearDown();
     }
 
     private function signIn(Employee $employee): void
@@ -121,6 +131,7 @@ class OrderingTest extends TestCase
         Order::factory()->completed()->for($this->location)->create();
 
         $this->page()
+            ->call('startOrder')
             ->assertSee(__('order.already_title'))
             ->assertSee(config('crm.support_phone'));
     }
@@ -223,6 +234,6 @@ class OrderingTest extends TestCase
             ->get(route('app.home'))
             ->assertOk()
             ->assertSee($this->location->name)
-            ->assertSee($this->baguette->name_ru);
+            ->assertSee(__('order.continue'));
     }
 }

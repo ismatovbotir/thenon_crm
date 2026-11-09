@@ -24,6 +24,12 @@ new #[Layout('layouts::crm')] class extends Component
 
     public string $notes = '';
 
+    public int $orderDaysAhead = 7;
+
+    public bool $nextDayEnabled = true;
+
+    public string $nextDayFrom = '21:00';
+
     public function rendering($view): void
     {
         $view->title(__('crm.companies.title'));
@@ -51,7 +57,7 @@ new #[Layout('layouts::crm')] class extends Component
 
     public function create(): void
     {
-        $this->reset('editingId', 'name', 'notes');
+        $this->reset('editingId', 'name', 'notes', 'orderDaysAhead', 'nextDayEnabled', 'nextDayFrom');
         $this->resetValidation();
         $this->showForm = true;
     }
@@ -64,6 +70,9 @@ new #[Layout('layouts::crm')] class extends Component
         $this->editingId = $company->id;
         $this->name = $company->name;
         $this->notes = (string) $company->notes;
+        $this->orderDaysAhead = $company->order_days_ahead;
+        $this->nextDayEnabled = $company->next_day_enabled;
+        $this->nextDayFrom = $company->next_day_from;
         $this->showForm = true;
     }
 
@@ -77,9 +86,18 @@ new #[Layout('layouts::crm')] class extends Component
         $data = $this->validate([
             'name' => ['required', 'string', 'max:255', Rule::unique('companies', 'name')->ignore($this->editingId)],
             'notes' => ['nullable', 'string', 'max:2000'],
+            'orderDaysAhead' => ['required', 'integer', 'between:0,60'],
+            'nextDayEnabled' => ['boolean'],
+            'nextDayFrom' => ['required', 'date_format:H:i'],
         ]);
 
-        $data['notes'] = $data['notes'] ?: null;
+        $data = [
+            'name' => $data['name'],
+            'notes' => $data['notes'] ?: null,
+            'order_days_ahead' => $data['orderDaysAhead'],
+            'next_day_enabled' => $data['nextDayEnabled'],
+            'next_day_from' => $data['nextDayFrom'],
+        ];
 
         if ($this->editingId) {
             Company::query()->findOrFail($this->editingId)->update($data);
@@ -167,6 +185,20 @@ new #[Layout('layouts::crm')] class extends Component
                 <x-crm.field name="notes" :label="__('crm.common.notes')">
                     <textarea id="notes" wire:model="notes" rows="3" class="crm-input"></textarea>
                 </x-crm.field>
+                <x-crm.field name="orderDaysAhead" :label="__('crm.companies.days_ahead')" :hint="__('crm.companies.days_ahead_hint')">
+                    <input id="orderDaysAhead" type="number" min="0" max="60" wire:model="orderDaysAhead" class="crm-input">
+                </x-crm.field>
+                <div class="space-y-3 rounded-xl bg-navy-50/60 p-4">
+                    <label class="flex items-center gap-2 text-sm font-medium text-navy-800">
+                        <input type="checkbox" wire:model.live="nextDayEnabled" class="rounded border-navy-200 text-gold-500 focus:ring-gold-400">
+                        {{ __('crm.companies.next_day_enabled') }}
+                    </label>
+                    @if ($nextDayEnabled)
+                        <x-crm.field name="nextDayFrom" :label="__('crm.companies.next_day_from')" :hint="__('crm.companies.next_day_hint')">
+                            <input id="nextDayFrom" type="time" wire:model="nextDayFrom" class="crm-input">
+                        </x-crm.field>
+                    @endif
+                </div>
                 <div class="flex justify-end gap-2 pt-2">
                     <button type="button" wire:click="closeForm" class="crm-btn-secondary">{{ __('crm.common.cancel') }}</button>
                     <button type="submit" class="crm-btn-primary">{{ __('crm.common.save') }}</button>

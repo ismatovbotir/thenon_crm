@@ -18,6 +18,9 @@ class CompanyFactory extends Factory
         return [
             'name' => fake()->unique()->company(),
             'notes' => null,
+            'order_days_ahead' => 7,
+            'next_day_enabled' => true,
+            'next_day_from' => '21:00',
             'is_active' => true,
         ];
     }

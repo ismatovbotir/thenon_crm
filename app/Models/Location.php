@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['company_id', 'name', 'address', 'default_employee_id', 'is_active'])]
+#[Fillable(['company_id', 'name', 'address', 'yandex_url', 'default_employee_id', 'is_active'])]
 class Location extends Model
 {
     /** @use HasFactory<LocationFactory> */
