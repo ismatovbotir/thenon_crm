@@ -13,6 +13,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Str;
 use Livewire\Livewire;
 use Tests\TestCase;
 
@@ -164,7 +165,30 @@ class OrderFlowTest extends TestCase
         Queue::assertPushed(SendTelegramMessage::class, fn (SendTelegramMessage $job) => $job->chatId === 777
             && str_contains($job->text, $this->location->name)
             && str_contains($job->text, $this->item->name_ru)
-            && str_contains($job->text, 'https://yandex.uz/maps/-/CCUabc'));
+            && str_contains($job->text, 'https://yandex.uz/maps/-/CCUabc')
+            && str_contains($job->text, route('orders.preview', Order::query()->firstOrFail())));
+    }
+
+    public function test_order_preview_opens_by_uuid_without_login(): void
+    {
+        $order = Order::factory()->completed()->for($this->location)->create();
+        $order->lines()->create(['item_id' => $this->item->id, 'quantity' => 5]);
+
+        $this->assertTrue(Str::isUuid($order->uuid));
+
+        $this->get(route('orders.preview', $order))
+            ->assertOk()
+            ->assertSee($this->location->name)
+            ->assertSee($this->item->name_ru)
+            ->assertSee('noindex', false);
+    }
+
+    public function test_order_preview_does_not_open_by_numeric_id_or_unknown_uuid(): void
+    {
+        $order = Order::factory()->for($this->location)->create();
+
+        $this->get('/o/'.$order->id)->assertNotFound();
+        $this->get('/o/'.Str::uuid())->assertNotFound();
     }
 
     public function test_no_admin_message_is_sent_without_an_admin_id(): void

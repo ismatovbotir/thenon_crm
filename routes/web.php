@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\DevTelegramController;
 use App\Http\Controllers\EmployeeAppController;
+use App\Http\Controllers\OrderPreviewController;
 use App\Http\Controllers\ReportExportController;
 use App\Http\Controllers\TelegramWebhookController;
 use App\Http\Middleware\SetLocale;
@@ -49,6 +50,8 @@ Route::prefix('dev/telegram')->name('dev.telegram')->group(function () {
     Route::post('stop', [DevTelegramController::class, 'stop'])->name('.stop');
     Route::post('employees/{employee}', [DevTelegramController::class, 'select'])->name('.select');
 });
+
+Route::get('o/{order:uuid}', OrderPreviewController::class)->middleware('throttle:60,1')->name('orders.preview');
 
 Route::post('telegram/webhook', TelegramWebhookController::class)->name('telegram.webhook');
 

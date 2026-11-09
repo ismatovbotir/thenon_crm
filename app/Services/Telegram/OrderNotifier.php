@@ -97,6 +97,7 @@ class OrderNotifier
             'employee' => $order->employee?->name ?? '—',
             'lines' => $lines,
             'positions' => $order->lines->count(),
+            'link' => route('orders.preview', $order),
         ]);
     }
 
