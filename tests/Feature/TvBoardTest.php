@@ -218,4 +218,18 @@ class TvBoardTest extends TestCase
         $this->assertCount(1, $slides);
         $this->assertSame('Mine', $slides->first()['company']->name);
     }
+
+    public function test_many_locations_flow_into_several_columns(): void
+    {
+        $company = Company::factory()->create(['name' => 'Big']);
+        $screen = TvScreen::factory()->create();
+        foreach (range(1, 14) as $number) {
+            Location::factory()->for($company)->create(['name' => 'Branch '.str_pad((string) $number, 2, '0', STR_PAD_LEFT)]);
+        }
+
+        $html = $this->get($screen->url())->assertOk()->getContent();
+
+        $this->assertStringContainsString('grid-cols-3', $html);
+        $this->assertStringContainsString('Branch 14', $html);
+    }
 }
