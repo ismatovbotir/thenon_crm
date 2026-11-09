@@ -68,22 +68,22 @@ new #[Layout('layouts::crm')] class extends Component
         $now = now()->timestamp;
         $row = Schema::hasTable($this->jobsTable()) ? DB::table($this->jobsTable())
             ->selectRaw(
-                'count(*) as total,'
-                .' sum(case when reserved_at is not null then 1 else 0 end) as running,'
-                .' sum(case when reserved_at is null and available_at > ? then 1 else 0 end) as delayed,'
-                .' min(case when reserved_at is null and available_at <= ? then available_at end) as oldest',
+                'count(*) as jobs_total,'
+                .' sum(case when reserved_at is not null then 1 else 0 end) as jobs_running,'
+                .' sum(case when reserved_at is null and available_at > ? then 1 else 0 end) as jobs_delayed,'
+                .' min(case when reserved_at is null and available_at <= ? then available_at end) as jobs_oldest',
                 [$now, $now],
             )->first() : null;
 
-        $running = (int) ($row->running ?? 0);
-        $delayed = (int) ($row->delayed ?? 0);
+        $running = (int) ($row->jobs_running ?? 0);
+        $delayed = (int) ($row->jobs_delayed ?? 0);
 
         return [
-            'waiting' => (int) ($row->total ?? 0) - $running - $delayed,
+            'waiting' => (int) ($row->jobs_total ?? 0) - $running - $delayed,
             'running' => $running,
             'delayed' => $delayed,
             'failed' => Schema::hasTable($this->failedTable()) ? DB::table($this->failedTable())->count() : 0,
-            'oldest_wait' => isset($row->oldest) ? max(0, $now - (int) $row->oldest) : null,
+            'oldest_wait' => isset($row->jobs_oldest) ? max(0, $now - (int) $row->jobs_oldest) : null,
         ];
     }
 
