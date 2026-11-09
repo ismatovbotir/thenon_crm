@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\ItemUnit;
+use App\Services\CatalogCache;
 use Database\Factories\ItemFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
@@ -10,13 +11,18 @@ use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
-use Illuminate\Support\Facades\Storage;
 
 #[Fillable(['code', 'name_uz', 'name_ru', 'image_path', 'unit', 'step', 'category', 'is_active'])]
 class Item extends Model
 {
     /** @use HasFactory<ItemFactory> */
     use HasFactory;
+
+    protected static function booted(): void
+    {
+        static::saved(fn () => app(CatalogCache::class)->flush());
+        static::deleted(fn () => app(CatalogCache::class)->flush());
+    }
 
     /**
      * @return array<string, string>
@@ -45,11 +51,13 @@ class Item extends Model
     }
 
     /**
+     * Served by the app itself on the host the page is opened on (not through public/storage), versioned for caching.
+     *
      * @return Attribute<string|null, never>
      */
     protected function imageUrl(): Attribute
     {
-        return Attribute::get(fn (): ?string => $this->image_path ? Storage::disk('public')->url($this->image_path) : null);
+        return Attribute::get(fn (): ?string => $this->image_path ? route('media.item', ['item' => $this->id, 'v' => $this->updated_at?->timestamp]) : null);
     }
 
     /**

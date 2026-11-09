@@ -35,7 +35,7 @@ new #[Layout('layouts::crm')] class extends Component
 };
 ?>
 
-<div class="mx-auto max-w-6xl space-y-6">
+<div class="w-full space-y-6">
     <div>
         <a href="{{ route('crm.companies.index') }}" wire:navigate class="text-sm font-medium text-navy-600 hover:text-navy-950">&larr; {{ __('crm.companies.title') }}</a>
         <div class="mt-2 flex flex-wrap items-center gap-3">

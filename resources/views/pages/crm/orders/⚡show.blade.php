@@ -170,13 +170,17 @@ new #[Layout('layouts::crm')] class extends Component
 };
 ?>
 
-<div class="mx-auto max-w-4xl space-y-6">
+<div class="w-full space-y-6">
     <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
             <a href="{{ route('crm.orders.index', ['date' => $this->order->order_date->toDateString()]) }}" wire:navigate class="text-sm text-navy-600 hover:text-navy-900">&larr; {{ __('crm.orders.title') }}</a>
             <h2 class="mt-1 text-2xl font-semibold text-navy-800">{{ __('crm.orders.order_no', ['id' => $this->order->id]) }}</h2>
         </div>
-        <span class="crm-badge bg-navy-100 px-3 py-1.5 text-sm text-navy-800">{{ $this->order->status->label() }}</span>
+        <div class="flex flex-wrap items-center gap-2">
+            <x-crm.sign :on="$this->order->admin_notified_at !== null" :label="__('crm.orders.admin_informed')" />
+            <x-crm.sign :on="$this->order->synced_1c_at !== null" :label="__('crm.orders.synced_1c')" />
+            <span class="crm-badge bg-navy-100 px-3 py-1.5 text-sm text-navy-800">{{ $this->order->status->label() }}</span>
+        </div>
     </div>
 
     <div class="crm-card grid gap-4 p-5 sm:grid-cols-4">

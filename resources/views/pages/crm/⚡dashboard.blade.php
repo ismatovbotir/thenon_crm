@@ -34,7 +34,7 @@ new #[Layout('layouts::crm')] class extends Component
 };
 ?>
 
-<div class="mx-auto max-w-6xl space-y-8">
+<div class="w-full space-y-8">
     <section class="relative overflow-hidden rounded-3xl bg-navy-900 p-8 text-white sm:p-10">
         <img src="{{ asset('images/brand/photo3.jpg') }}" alt="" class="absolute inset-0 size-full object-cover opacity-15">
         <div class="relative">

@@ -12,6 +12,7 @@ use App\Models\Order;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
@@ -169,6 +170,27 @@ class OrderFlowTest extends TestCase
             && str_contains($job->text, route('orders.preview', Order::query()->firstOrFail())));
     }
 
+    public function test_completed_order_is_marked_as_informed_to_admin_and_synced_to_1c(): void
+    {
+        config(['telegram.bot_token' => '123:ABC', 'telegram.admin_chat_id' => '777']);
+        Http::fake(['api.telegram.org/*' => Http::response(['ok' => true])]);
+
+        Livewire::test('pages::app.catalog')->call('startOrder')->call('increment', $this->item->id)->call('complete');
+
+        $order = Order::query()->firstOrFail();
+        $this->assertNotNull($order->admin_notified_at);
+        $this->assertNotNull($order->synced_1c_at);
+    }
+
+    public function test_drafts_are_not_marked_or_synced(): void
+    {
+        Livewire::test('pages::app.catalog')->call('startOrder')->call('increment', $this->item->id);
+
+        $order = Order::query()->firstOrFail();
+        $this->assertNull($order->admin_notified_at);
+        $this->assertNull($order->synced_1c_at);
+    }
+
     public function test_order_preview_opens_by_uuid_without_login(): void
     {
         $order = Order::factory()->completed()->for($this->location)->create();
@@ -198,7 +220,7 @@ class OrderFlowTest extends TestCase
 
         Livewire::test('pages::app.catalog')->call('startOrder')->call('increment', $this->item->id)->call('complete');
 
-        Queue::assertNothingPushed();
+        Queue::assertNotPushed(SendTelegramMessage::class);
     }
 
     public function test_location_yandex_link_must_be_an_https_yandex_address(): void

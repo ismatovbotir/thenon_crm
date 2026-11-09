@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\DevTelegramController;
 use App\Http\Controllers\EmployeeAppController;
+use App\Http\Controllers\ItemImageController;
 use App\Http\Controllers\OrderPreviewController;
 use App\Http\Controllers\ReportExportController;
 use App\Http\Controllers\TelegramWebhookController;
@@ -50,6 +51,8 @@ Route::prefix('dev/telegram')->name('dev.telegram')->group(function () {
     Route::post('stop', [DevTelegramController::class, 'stop'])->name('.stop');
     Route::post('employees/{employee}', [DevTelegramController::class, 'select'])->name('.select');
 });
+
+Route::get('media/items/{item}', ItemImageController::class)->middleware('throttle:240,1')->name('media.item');
 
 Route::get('o/{order:uuid}', OrderPreviewController::class)->middleware('throttle:60,1')->name('orders.preview');
 

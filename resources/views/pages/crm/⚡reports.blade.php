@@ -104,7 +104,7 @@ new #[Layout('layouts::crm')] class extends Component
 };
 ?>
 
-<div class="mx-auto max-w-6xl space-y-6">
+<div class="w-full space-y-6">
     <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h2 class="text-2xl font-semibold text-navy-800">{{ __('crm.reports.title') }}</h2>
         @if ($this->rangeIsValid)

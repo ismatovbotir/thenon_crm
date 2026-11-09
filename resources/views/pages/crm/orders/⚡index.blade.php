@@ -116,7 +116,7 @@ new #[Layout('layouts::crm')] class extends Component
 };
 ?>
 
-<div class="mx-auto max-w-6xl space-y-6">
+<div class="w-full space-y-6">
     <h2 class="text-2xl font-semibold text-navy-800">{{ __('crm.orders.title') }}</h2>
 
     <div class="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
@@ -156,6 +156,7 @@ new #[Layout('layouts::crm')] class extends Component
                             <th class="crm-th">{{ __('crm.orders.location') }}</th>
                             <th class="crm-th">{{ __('crm.orders.positions') }}</th>
                             <th class="crm-th">{{ __('crm.common.status') }}</th>
+                            <th class="crm-th">{{ __('crm.orders.signs') }}</th>
                             <th class="crm-th text-right">{{ __('crm.common.actions') }}</th>
                         </tr>
                     </thead>
@@ -170,6 +171,12 @@ new #[Layout('layouts::crm')] class extends Component
                                 </td>
                                 <td class="crm-td">{{ $order->lines_count }} · {{ (int) $order->lines_sum_quantity }}</td>
                                 <td class="crm-td"><span class="crm-badge {{ $this->badgeClass($order->status) }}">{{ $order->status->label() }}</span></td>
+                                <td class="crm-td">
+                                    <div class="flex flex-wrap gap-1">
+                                        <x-crm.sign :on="$order->admin_notified_at !== null" :label="__('crm.orders.admin_informed')" />
+                                        <x-crm.sign :on="$order->synced_1c_at !== null" :label="__('crm.orders.synced_1c')" />
+                                    </div>
+                                </td>
                                 <td class="crm-td text-right">
                                     <a href="{{ route('crm.orders.show', $order) }}" wire:navigate class="crm-btn-ghost">{{ __('crm.orders.open') }}</a>
                                 </td>

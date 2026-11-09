@@ -19,12 +19,16 @@ class OrderResource extends JsonResource
     {
         return [
             'id' => $this->id,
+            'uuid' => $this->uuid,
+            'preview_url' => route('orders.preview', $this->resource),
             'date' => $this->order_date->toDateString(),
             'status' => $this->status->value,
             'company' => ['id' => $this->location->company->id, 'name' => $this->location->company->name],
             'location' => ['id' => $this->location->id, 'name' => $this->location->name],
             'completed_at' => $this->completed_at?->toIso8601String(),
             'delivered_at' => $this->delivered_at?->toIso8601String(),
+            'admin_notified_at' => $this->admin_notified_at?->toIso8601String(),
+            'synced_1c_at' => $this->synced_1c_at?->toIso8601String(),
             'updated_at' => $this->updated_at->toIso8601String(),
             'lines' => $this->lines->map(fn (OrderItem $line) => [
                 'item_code' => $line->item->code,

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\OrderStatus;
+use App\Jobs\SyncOrderToOneC;
 use App\Services\Telegram\OrderNotifier;
 use Database\Factories\OrderFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -12,7 +13,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['location_id', 'employee_id', 'order_date', 'status', 'completed_at', 'delivered_at'])]
+#[Fillable(['location_id', 'employee_id', 'order_date', 'status', 'completed_at', 'delivered_at', 'admin_notified_at', 'synced_1c_at'])]
 class Order extends Model
 {
     /** @use HasFactory<OrderFactory> */
@@ -35,6 +36,10 @@ class Order extends Model
         static::updated(function (Order $order): void {
             if ($order->wasChanged('status')) {
                 app(OrderNotifier::class)->statusChanged($order);
+
+                if ($order->status === OrderStatus::Completed) {
+                    SyncOrderToOneC::dispatch($order->id);
+                }
             }
         });
     }
@@ -49,6 +54,8 @@ class Order extends Model
             'status' => OrderStatus::class,
             'completed_at' => 'datetime',
             'delivered_at' => 'datetime',
+            'admin_notified_at' => 'datetime',
+            'synced_1c_at' => 'datetime',
         ];
     }
 

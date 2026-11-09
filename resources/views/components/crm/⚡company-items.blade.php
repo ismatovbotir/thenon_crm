@@ -1,5 +1,6 @@
 <?php
 
+use App\Services\CatalogCache;
 use App\Models\Company;
 use App\Models\Item;
 use Illuminate\Database\Eloquent\Collection;
@@ -67,6 +68,7 @@ new class extends Component
         $ids = Item::query()->whereIn('id', array_map('intval', $this->selected))->pluck('id')->all();
 
         $this->company()->items()->syncWithoutDetaching($ids);
+        app(CatalogCache::class)->flush();
 
         $this->reset('selected');
         unset($this->assigned, $this->available);
@@ -86,11 +88,13 @@ new class extends Component
         );
 
         $this->company()->items()->updateExistingPivot($itemId, ['price' => $value === '' ? null : $value]);
+        app(CatalogCache::class)->flush();
     }
 
     public function remove(int $itemId): void
     {
         $this->company()->items()->detach($itemId);
+        app(CatalogCache::class)->flush();
 
         unset($this->prices[$itemId], $this->assigned, $this->available);
     }

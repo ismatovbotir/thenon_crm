@@ -89,6 +89,9 @@ return [
     'orders' => [
         'title' => 'Buyurtmalar',
         'order_no' => 'Buyurtma № :id',
+        'signs' => 'Belgilar',
+        'admin_informed' => 'Admin xabardor qilindi',
+        'synced_1c' => '1C da',
         'date' => 'Sana',
         'today' => 'Bugun',
         'location' => 'Lokatsiya',
@@ -186,7 +189,7 @@ return [
         'step_hint' => 'Miqdor shu qadam bilan o‘zgaradi (masalan, 10).',
         'category' => 'Toifa',
         'image' => 'Rasm',
-        'image_hint' => 'Majburiy emas. JPG yoki PNG, 2 MB gacha.',
+        'image_hint' => 'Majburiy emas. JPG yoki PNG, 5 MB gacha.',
         'remove_image' => 'Rasmni o‘chirish',
         'search' => 'Kod yoki nom bo‘yicha qidirish',
         'units' => [

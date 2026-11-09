@@ -6,6 +6,7 @@ use App\Models\Employee;
 use App\Models\Item;
 use App\Models\Location;
 use App\Models\Order;
+use App\Services\CatalogCache;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -151,10 +152,7 @@ new #[Layout('layouts::app')] class extends Component
     #[Computed]
     public function catalogItems(): Collection
     {
-        return $this->employee->company->items()
-            ->where('items.is_active', true)
-            ->orderBy('name_'.app()->getLocale())
-            ->get();
+        return app(CatalogCache::class)->forCompany($this->employee->company);
     }
 
     /**

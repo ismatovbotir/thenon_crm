@@ -56,7 +56,7 @@ new #[Layout('layouts::crm')] class extends Component
     public function updatedImage(): void
     {
         try {
-            $this->validateOnly('image', ['image' => ['nullable', 'image', 'max:2048']]);
+            $this->validateOnly('image', ['image' => ['nullable', 'image', 'max:5120']]);
         } catch (ValidationException $exception) {
             $this->reset('image');
 
@@ -115,7 +115,7 @@ new #[Layout('layouts::crm')] class extends Component
             'unit' => ['required', Rule::enum(ItemUnit::class)],
             'step' => ['required', 'integer', 'min:1', 'max:100000'],
             'category' => ['nullable', 'string', 'max:100'],
-            'image' => ['nullable', 'image', 'max:2048'],
+            'image' => ['nullable', 'image', 'max:5120'],
         ], attributes: [
             'code' => __('crm.items.code'),
             'nameUz' => __('crm.items.name_uz'),
@@ -163,7 +163,7 @@ new #[Layout('layouts::crm')] class extends Component
 };
 ?>
 
-<div class="mx-auto max-w-6xl space-y-6">
+<div class="w-full space-y-6">
     <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h2 class="text-2xl font-semibold text-navy-800">{{ __('crm.items.title') }}</h2>
         <button type="button" wire:click="create" class="crm-btn-gold">

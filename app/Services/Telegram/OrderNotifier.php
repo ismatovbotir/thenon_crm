@@ -74,7 +74,7 @@ class OrderNotifier
             App::setLocale($previousLocale);
         }
 
-        SendTelegramMessage::dispatch((int) $adminId, mb_substr($text, 0, 4000));
+        SendTelegramMessage::dispatch((int) $adminId, mb_substr($text, 0, 4000), null, $order->id);
     }
 
     /**

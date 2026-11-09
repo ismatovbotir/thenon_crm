@@ -57,7 +57,7 @@ new #[Layout('layouts::crm')] class extends Component
 };
 ?>
 
-<div class="mx-auto max-w-4xl space-y-6">
+<div class="w-full space-y-6">
     <h2 class="text-2xl font-semibold text-navy-800">{{ __('crm.settings.title') }}</h2>
 
     <section class="crm-card space-y-4 p-5">
