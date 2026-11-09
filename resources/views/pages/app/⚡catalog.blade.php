@@ -7,6 +7,7 @@ use App\Models\Item;
 use App\Models\Location;
 use App\Models\Order;
 use App\Services\CatalogCache;
+use App\Support\Money;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -40,7 +41,7 @@ new #[Layout('layouts::app')] class extends Component
     public function mount(): void
     {
         $this->locationId = $this->locations->first()?->id;
-        $this->orderDate = $this->earliestDate->toDateString();
+        $this->orderDate = $this->defaultDate->toDateString();
         $this->loadQuantities();
     }
 
@@ -59,12 +60,22 @@ new #[Layout('layouts::app')] class extends Component
     }
 
     /**
-     * First date the company may order for (tomorrow once the company's evening time has passed).
+     * The date the order form starts on (tomorrow once the company's evening time has passed).
+     */
+    #[Computed]
+    public function defaultDate(): CarbonImmutable
+    {
+        return $this->employee->company->earliestOrderDate(now());
+    }
+
+    /**
+     * First date that can still be ordered for: the default date, or the day before it while that
+     * day is still open because the location's day runs past midnight (e.g. until 06:00 next morning).
      */
     #[Computed]
     public function earliestDate(): CarbonImmutable
     {
-        return $this->employee->company->earliestOrderDate(now());
+        return $this->location?->stillOpenEarlierDate($this->defaultDate, now()) ?? $this->defaultDate;
     }
 
     #[Computed]
@@ -79,7 +90,7 @@ new #[Layout('layouts::app')] class extends Component
     #[Computed]
     public function selectedDate(): string
     {
-        return CarbonImmutable::canBeCreatedFromFormat($this->orderDate, 'Y-m-d') ? $this->orderDate : $this->earliestDate->toDateString();
+        return CarbonImmutable::canBeCreatedFromFormat($this->orderDate, 'Y-m-d') ? $this->orderDate : $this->defaultDate->toDateString();
     }
 
     #[Computed]
@@ -120,7 +131,7 @@ new #[Layout('layouts::app')] class extends Component
     #[Computed]
     public function closed(): bool
     {
-        return $this->isToday && ($this->location?->isOrderingClosed(now()) ?? false);
+        return $this->location?->isOrderingClosedFor(CarbonImmutable::parse($this->selectedDate), now()) ?? false;
     }
 
     /**
@@ -129,13 +140,18 @@ new #[Layout('layouts::app')] class extends Component
     #[Computed]
     public function cutoffLabel(): ?string
     {
-        if (! $this->isToday) {
-            return null;
-        }
+        $rule = $this->location?->cutoffFor(CarbonImmutable::parse($this->selectedDate));
 
-        $rule = $this->location?->cutoffFor(now());
+        return $rule?->is_open && ! $this->closed ? $rule->cutoffTimeLabel() : null;
+    }
 
-        return $rule?->is_open ? $rule->cutoffTimeLabel() : null;
+    /**
+     * Whether the selected date's deadline falls on the next calendar day.
+     */
+    #[Computed]
+    public function cutoffNextDay(): bool
+    {
+        return (bool) $this->location?->cutoffFor(CarbonImmutable::parse($this->selectedDate))?->ends_next_day;
     }
 
     #[Computed]
@@ -206,7 +222,7 @@ new #[Layout('layouts::app')] class extends Component
     #[Computed]
     public function history(): Collection
     {
-        return Order::query()->withSum('lines', 'quantity')->withCount('lines')
+        return Order::query()->withSum('lines', 'quantity')->withSum('lines as lines_total', DB::raw('price * quantity'))->withCount('lines')
             ->where('location_id', $this->location?->id)
             ->orderByDesc('order_date')->limit(15)->get();
     }
@@ -468,12 +484,21 @@ new #[Layout('layouts::app')] class extends Component
 
     private function forgetCaches(): void
     {
-        unset($this->selectedDate, $this->isToday, $this->order, $this->locked, $this->readOnly, $this->closed, $this->cutoffLabel, $this->cartItems, $this->history);
+        unset($this->earliestDate, $this->selectedDate, $this->isToday, $this->order, $this->locked, $this->readOnly, $this->closed, $this->cutoffLabel, $this->cartItems, $this->history);
     }
 
     public function money(mixed $price): string
     {
-        return number_format((float) $price, 0, '.', ' ').' '.__('order.currency');
+        return Money::format($price);
+    }
+
+    /**
+     * Total of the cart at the company's current prices (items without a price count as zero).
+     */
+    #[Computed]
+    public function cartTotal(): float
+    {
+        return (float) $this->cartItems->sum(fn (Item $item) => (float) $item->pivot->price * ($this->quantities[$item->id] ?? 0));
     }
 };
 ?>
@@ -513,7 +538,7 @@ new #[Layout('layouts::app')] class extends Component
                 <div wire:key="history-{{ $past->id }}" class="crm-card flex items-center justify-between gap-3 px-4 py-3">
                     <button type="button" wire:click="openOrder({{ $past->id }})" class="min-w-0 flex-1 text-left">
                         <span class="block font-medium text-navy-800">{{ $past->order_date->format('d.m.Y') }}</span>
-                        <span class="block text-xs text-navy-600">{{ __('order.positions', ['count' => $past->lines_count]) }} · {{ (int) $past->lines_sum_quantity }}</span>
+                        <span class="block text-xs text-navy-600">{{ __('order.positions', ['count' => $past->lines_count]) }} · {{ (int) $past->lines_sum_quantity }}@if ($past->lines_total > 0) · {{ $this->money($past->lines_total) }}@endif</span>
                     </button>
                     <div class="flex shrink-0 flex-col items-end gap-2">
                         <span class="crm-badge bg-navy-100 text-navy-800">{{ $past->status->label() }}</span>
@@ -587,10 +612,26 @@ new #[Layout('layouts::app')] class extends Component
                 <div class="crm-card divide-y divide-navy-100">
                     @foreach ($this->order->lines as $line)
                         <div wire:key="line-{{ $line->id }}" class="flex items-center justify-between gap-3 px-4 py-3">
-                            <p class="min-w-0 truncate text-sm font-medium text-navy-800">{{ $line->item->name }}</p>
-                            <p class="shrink-0 text-sm font-semibold">{{ $line->quantity }} <span class="font-normal text-navy-600">{{ $line->item->unit->label() }}</span></p>
+                            <div class="min-w-0">
+                                <p class="truncate text-sm font-medium text-navy-800">{{ $line->item->name }}</p>
+                                @if ($line->price !== null)
+                                    <p class="text-xs text-navy-600">{{ $this->money($line->price) }} × {{ $line->quantity }}</p>
+                                @endif
+                            </div>
+                            <div class="shrink-0 text-right">
+                                <p class="text-sm font-semibold">{{ $line->quantity }} <span class="font-normal text-navy-600">{{ $line->item->unit->label() }}</span></p>
+                                @if ($line->total() !== null)
+                                    <p class="text-xs font-semibold text-navy-800">{{ $this->money($line->total()) }}</p>
+                                @endif
+                            </div>
                         </div>
                     @endforeach
+                    @if ($this->order->total() > 0)
+                        <div class="flex items-center justify-between gap-3 bg-navy-50 px-4 py-3">
+                            <span class="text-sm font-semibold text-navy-800">{{ __('order.total') }}</span>
+                            <span class="text-base font-bold text-navy-800">{{ $this->money($this->order->total()) }}</span>
+                        </div>
+                    @endif
                 </div>
             @endif
         @else
@@ -599,7 +640,7 @@ new #[Layout('layouts::app')] class extends Component
             @endif
 
             @if ($this->cutoffLabel)
-                <p class="rounded-xl bg-cream-100 px-4 py-2 text-sm text-crust-700">{{ __('order.cutoff_info', ['time' => $this->cutoffLabel]) }}</p>
+                <p class="rounded-xl bg-cream-100 px-4 py-2 text-sm text-crust-700">{{ __($this->cutoffNextDay ? 'order.cutoff_info_next_day' : 'order.cutoff_info', ['time' => $this->cutoffLabel]) }}</p>
             @endif
 
             <div class="flex gap-2">
@@ -676,7 +717,7 @@ new #[Layout('layouts::app')] class extends Component
                 <button type="button" @click="cart = true" class="min-w-0 flex-1 text-left">
                     <span class="block text-xs text-navy-600">{{ __('order.cart') }}</span>
                     <span class="block truncate font-semibold text-navy-800">
-                        {{ __('order.positions', ['count' => $this->cartItems->count()]) }} · {{ array_sum($quantities) }}
+                        {{ __('order.positions', ['count' => $this->cartItems->count()]) }} · {{ array_sum($quantities) }}@if ($this->cartTotal > 0) · {{ $this->money($this->cartTotal) }}@endif
                     </span>
                 </button>
                 <button type="button" @click="cart = true" class="crm-btn-primary" @disabled($this->cartItems->isEmpty())>{{ __('order.open_cart') }}</button>
@@ -695,7 +736,12 @@ new #[Layout('layouts::app')] class extends Component
                 <div class="flex-1 divide-y divide-navy-100 overflow-y-auto px-5">
                     @forelse ($this->cartItems as $item)
                         <div wire:key="cart-{{ $item->id }}" class="flex items-center gap-3 py-3">
-                            <p class="min-w-0 flex-1 text-sm font-medium text-navy-800">{{ $item->name }}</p>
+                            <div class="min-w-0 flex-1">
+                                <p class="text-sm font-medium text-navy-800">{{ $item->name }}</p>
+                                @if ($item->pivot->price !== null)
+                                    <p class="text-xs text-navy-600">{{ $this->money($item->pivot->price) }} × {{ $quantities[$item->id] }} = <span class="font-semibold text-navy-800">{{ $this->money($item->pivot->price * $quantities[$item->id]) }}</span></p>
+                                @endif
+                            </div>
                             <div class="flex items-center gap-1">
                                 <button type="button" wire:click="decrement({{ $item->id }})" aria-label="−" class="flex size-9 items-center justify-center rounded-full bg-navy-50 text-navy-800">−</button>
                                 <span class="w-12 text-center font-semibold">{{ $quantities[$item->id] }}</span>
@@ -708,6 +754,12 @@ new #[Layout('layouts::app')] class extends Component
                 </div>
 
                 <div class="space-y-3 border-t border-navy-100 px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4">
+                    @if ($this->cartTotal > 0)
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm font-semibold text-navy-800">{{ __('order.total') }}</span>
+                            <span class="text-lg font-bold text-navy-800">{{ $this->money($this->cartTotal) }}</span>
+                        </div>
+                    @endif
                     @error('cart')
                         <p class="text-sm text-red-600">{{ $message }}</p>
                     @enderror

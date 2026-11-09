@@ -74,6 +74,42 @@ class CutoffTest extends TestCase
         $this->assertTrue($this->location->fresh()->isOrderingClosed(now()));
     }
 
+    public function test_a_day_can_run_until_the_next_calendar_day(): void
+    {
+        $this->rule(['cutoff_time' => '06:00', 'ends_next_day' => true]);
+        $monday = Carbon::parse('2026-11-09', 'Asia/Tashkent');
+        $location = $this->location->fresh();
+
+        $this->at('23:30');
+        $this->assertFalse($location->isOrderingClosedFor($monday, now()));
+
+        Carbon::setTestNow(Carbon::parse('2026-11-10 05:59', 'Asia/Tashkent'));
+        $this->assertFalse($location->isOrderingClosedFor($monday, now()));
+        $this->assertSame('2026-11-09', $location->stillOpenEarlierDate(now()->startOfDay(), now())->toDateString());
+
+        Carbon::setTestNow(Carbon::parse('2026-11-10 06:00', 'Asia/Tashkent'));
+        $this->assertTrue($location->isOrderingClosedFor($monday, now()));
+        $this->assertNull($location->stillOpenEarlierDate(now()->startOfDay(), now()));
+    }
+
+    public function test_an_order_of_the_previous_day_can_still_be_edited_before_the_next_day_deadline(): void
+    {
+        $this->rule(['cutoff_time' => '06:00', 'ends_next_day' => true]);
+        Carbon::setTestNow(Carbon::parse('2026-11-10 03:00', 'Asia/Tashkent'));
+        Livewire::test('pages::app.catalog')
+            ->set('orderDate', '2026-11-09')
+            ->call('startOrder')
+            ->assertHasNoErrors()
+            ->call('setQuantity', $this->item->id, 2)
+            ->assertSet('quantities.'.$this->item->id, 2);
+
+        Carbon::setTestNow(Carbon::parse('2026-11-10 06:01', 'Asia/Tashkent'));
+        Livewire::test('pages::app.catalog')
+            ->set('orderDate', '2026-11-09')
+            ->call('startOrder')
+            ->assertHasErrors('orderDate');
+    }
+
     public function test_a_rule_for_another_weekday_does_not_apply(): void
     {
         $this->rule(['weekday' => 2, 'cutoff_time' => '08:00']);

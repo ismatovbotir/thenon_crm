@@ -2,11 +2,17 @@
 
 namespace App\Services\Telegram;
 
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 
 class TelegramClient
 {
+    /**
+     * Why the most recent call failed (Telegram's own description when available).
+     */
+    public ?string $lastError = null;
+
     public function isConfigured(): bool
     {
         return (bool) config('telegram.bot_token');
@@ -17,13 +23,29 @@ class TelegramClient
      */
     public function call(string $method, array $payload = []): bool
     {
+        $this->lastError = null;
         $token = config('telegram.bot_token');
 
         if (! $token) {
+            $this->lastError = 'Bot token is not configured.';
+
             return false;
         }
 
-        return $this->http()->post("https://api.telegram.org/bot{$token}/{$method}", $payload)->successful();
+        try {
+            $response = $this->http()->post("https://api.telegram.org/bot{$token}/{$method}", $payload);
+        } catch (ConnectionException $exception) {
+            $this->lastError = 'Connection to Telegram failed: '.str_replace($token, '***', $exception->getMessage());
+
+            return false;
+        }
+
+        if (! $response->successful()) {
+            $this->lastError = 'Telegram error '.($response->json('error_code') ?? $response->status())
+                .': '.($response->json('description') ?? mb_substr($response->body(), 0, 300));
+        }
+
+        return $response->successful();
     }
 
     /**

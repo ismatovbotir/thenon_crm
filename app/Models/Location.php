@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Database\Factories\LocationFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -62,19 +63,46 @@ class Location extends Model
      */
     public function isOrderingClosed(CarbonInterface $moment): bool
     {
-        $rule = $this->cutoffFor($moment);
+        return $this->isOrderingClosedFor($moment, $moment);
+    }
+
+    /**
+     * Whether an order dated $orderDate can no longer be placed or changed at $moment.
+     * The rule is the one of the order date's weekday. A closed weekday blocks the day itself;
+     * a cutoff time ends the day at that time on the order date, or on the next calendar day
+     * when the rule is set to run past midnight.
+     */
+    public function isOrderingClosedFor(CarbonInterface $orderDate, CarbonInterface $moment): bool
+    {
+        $rule = $this->cutoffFor($orderDate);
 
         if (! $rule) {
             return false;
         }
 
         if (! $rule->is_open) {
-            return true;
+            return $orderDate->copy()->startOfDay()->lte($moment->copy()->startOfDay());
         }
 
-        $time = $rule->cutoffTimeLabel();
+        $deadline = $rule->deadlineFor($orderDate);
 
-        return $time !== null && $moment->format('H:i') >= $time;
+        return $deadline !== null && $moment->gte($deadline);
+    }
+
+    /**
+     * The latest earlier date that is still open only because its day runs past midnight
+     * (e.g. Monday's orders until Tuesday 06:00), looking at the day before $firstDate.
+     */
+    public function stillOpenEarlierDate(CarbonInterface $firstDate, CarbonInterface $moment): ?CarbonImmutable
+    {
+        $candidate = CarbonImmutable::instance($firstDate)->startOfDay()->subDay();
+        $rule = $this->cutoffFor($candidate);
+
+        if (! $rule || ! $rule->is_open || ! $rule->ends_next_day || $this->isOrderingClosedFor($candidate, $moment)) {
+            return null;
+        }
+
+        return $candidate;
     }
 
     /**

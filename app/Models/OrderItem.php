@@ -15,6 +15,14 @@ class OrderItem extends Model
     use HasFactory;
 
     /**
+     * Price times quantity, or null when the line has no price.
+     */
+    public function total(): ?float
+    {
+        return $this->price === null ? null : (float) $this->price * $this->quantity;
+    }
+
+    /**
      * @return BelongsTo<Order, $this>
      */
     public function order(): BelongsTo

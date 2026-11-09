@@ -194,6 +194,19 @@ class NotificationTest extends TestCase
         $this->assertStringContainsString('Chilonzor', $messages[0]['text']);
     }
 
+    public function test_reminder_for_a_day_that_runs_past_midnight_is_sent_the_next_morning(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-11-10 05:40', 'Asia/Tashkent'));
+        LocationCutoff::factory()->for($this->location)->create(['weekday' => 1, 'cutoff_time' => '06:00', 'ends_next_day' => true]);
+
+        $this->artisan('orders:remind-cutoff')->assertSuccessful();
+        $this->artisan('orders:remind-cutoff');
+
+        $messages = $this->sent();
+        $this->assertCount(1, $messages);
+        $this->assertStringContainsString('06:00', $messages[0]['text']);
+    }
+
     public function test_reminder_is_sent_only_once_per_day(): void
     {
         $this->remindableLocation();
@@ -244,5 +257,22 @@ class NotificationTest extends TestCase
         $this->artisan('orders:remind-cutoff');
 
         Http::assertNothingSent();
+    }
+
+    public function test_a_rejected_message_fails_with_the_telegram_description(): void
+    {
+        config(['telegram.bot_token' => '123:ABC']);
+        Http::swap(new Factory);
+        Http::fake(['api.telegram.org/*' => Http::response(
+            ['ok' => false, 'error_code' => 403, 'description' => 'Forbidden: bot was blocked by the user'], 403,
+        )]);
+
+        try {
+            (new SendTelegramMessage(55, 'hi'))->handle(app(TelegramClient::class));
+            $this->fail('The job should have failed.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('chat 55', $exception->getMessage());
+            $this->assertStringContainsString('Telegram error 403: Forbidden: bot was blocked by the user', $exception->getMessage());
+        }
     }
 }

@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 use Database\Factories\LocationCutoffFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -12,7 +14,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * Ordering rule for one location on one ISO weekday (1 = Monday ... 7 = Sunday).
  * A missing row means no restriction that day.
  */
-#[Fillable(['location_id', 'weekday', 'is_open', 'cutoff_time'])]
+#[Fillable(['location_id', 'weekday', 'is_open', 'cutoff_time', 'ends_next_day'])]
 class LocationCutoff extends Model
 {
     /** @use HasFactory<LocationCutoffFactory> */
@@ -23,7 +25,7 @@ class LocationCutoff extends Model
      */
     protected function casts(): array
     {
-        return ['is_open' => 'boolean'];
+        return ['is_open' => 'boolean', 'ends_next_day' => 'boolean'];
     }
 
     /**
@@ -32,6 +34,23 @@ class LocationCutoff extends Model
     public function cutoffTimeLabel(): ?string
     {
         return $this->cutoff_time ? substr((string) $this->cutoff_time, 0, 5) : null;
+    }
+
+    /**
+     * The moment ordering closes for an order dated $orderDate: the cutoff time on that date,
+     * or on the following calendar day when the rule's day runs past midnight.
+     */
+    public function deadlineFor(CarbonInterface $orderDate): ?CarbonImmutable
+    {
+        $time = $this->cutoffTimeLabel();
+
+        if ($time === null) {
+            return null;
+        }
+
+        $day = CarbonImmutable::instance($orderDate)->startOfDay();
+
+        return ($this->ends_next_day ? $day->addDay() : $day)->setTimeFromTimeString($time);
     }
 
     /**

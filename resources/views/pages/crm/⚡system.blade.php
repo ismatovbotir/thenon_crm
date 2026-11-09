@@ -247,12 +247,12 @@ new #[Layout('layouts::crm')] class extends Component
         </div>
         <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             @foreach ($this->commandKeys() as $key)
-                <button type="button" wire:key="cmd-{{ $key }}" wire:click="runCommand('{{ $key }}')" wire:loading.attr="disabled"
-                        wire:confirm="{{ __('crm.system.confirm', ['name' => __('crm.system.cmd.'.$key.'.name')]) }}"
-                        @class(['rounded-xl border p-3 text-left transition hover:bg-navy-50 disabled:opacity-60', 'border-red-200' => $this->isDangerous($key), 'border-navy-100' => ! $this->isDangerous($key)])>
+                <x-crm.confirm wire:key="cmd-{{ $key }}" action="runCommand('{{ $key }}')" :danger="$this->isDangerous($key)"
+                               :message="__('crm.system.confirm', ['name' => __('crm.system.cmd.'.$key.'.name')])"
+                               :class="\Illuminate\Support\Arr::toCssClasses(['w-full rounded-xl border p-3 text-left transition hover:bg-navy-50', 'border-red-200' => $this->isDangerous($key), 'border-navy-100' => ! $this->isDangerous($key)])">
                     <span @class(['block text-sm font-semibold', 'text-red-700' => $this->isDangerous($key), 'text-navy-800' => ! $this->isDangerous($key)])>{{ __('crm.system.cmd.'.$key.'.name') }}</span>
                     <span class="mt-0.5 block text-xs text-navy-600">{{ __('crm.system.cmd.'.$key.'.hint') }}</span>
-                </button>
+                </x-crm.confirm>
             @endforeach
         </div>
 
@@ -324,7 +324,7 @@ new #[Layout('layouts::crm')] class extends Component
                                 <td class="crm-td">
                                     <div class="flex justify-end gap-1">
                                         <button type="button" wire:click="retryFailed('{{ $job['uuid'] }}')" class="crm-btn-ghost">{{ __('crm.system.retry') }}</button>
-                                        <button type="button" wire:click="forgetFailed('{{ $job['uuid'] }}')" wire:confirm="{{ __('crm.system.delete_confirm') }}" class="crm-btn-ghost text-red-600">{{ __('crm.system.delete') }}</button>
+                                        <x-crm.confirm action="forgetFailed('{{ $job['uuid'] }}')" :message="__('crm.system.delete_confirm')" danger class="crm-btn-ghost text-red-600">{{ __('crm.system.delete') }}</x-crm.confirm>
                                     </div>
                                 </td>
                             </tr>

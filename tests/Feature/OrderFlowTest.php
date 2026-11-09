@@ -242,6 +242,45 @@ class OrderFlowTest extends TestCase
         Livewire::test('pages::app.catalog')->call('openOrder', $foreign->id)->assertNotFound();
     }
 
+    public function test_prices_from_the_company_list_are_recorded_and_totalled(): void
+    {
+        $this->company->items()->updateExistingPivot($this->item->id, ['price' => 12500]);
+        $free = Item::factory()->create(['step' => 1]);
+        $this->company->items()->attach($free);
+
+        Livewire::test('pages::app.catalog')
+            ->call('startOrder')
+            ->call('setQuantity', $this->item->id, 3)
+            ->call('setQuantity', $free->id, 2)
+            ->assertSee('37 500')
+            ->call('complete');
+
+        $order = Order::query()->with('lines')->firstOrFail();
+        $this->assertSame(37500.0, $order->total());
+        $this->assertTrue($order->hasUnpricedLines());
+        $this->assertNull($order->lines->firstWhere('item_id', $free->id)->total());
+
+        $this->company->items()->updateExistingPivot($this->item->id, ['price' => 99999]);
+        $this->assertSame(37500.0, $order->fresh('lines')->total());
+
+        Livewire::test('pages::app.catalog')
+            ->call('openOrder', $order->id)
+            ->assertSee('37 500');
+        $this->get(route('orders.preview', $order))->assertOk()->assertDontSee('37 500')->assertDontSee(__('order.total', [], 'ru'));
+    }
+
+    public function test_the_admin_message_contains_prices_and_the_total(): void
+    {
+        config(['telegram.admin_chat_id' => '777']);
+        Queue::fake();
+        $order = Order::factory()->for($this->location)->create(['status' => OrderStatus::Draft]);
+        $order->lines()->create(['item_id' => $this->item->id, 'quantity' => 2, 'price' => 1000]);
+
+        $order->update(['status' => OrderStatus::Completed]);
+
+        Queue::assertPushed(SendTelegramMessage::class, fn ($job) => str_contains($job->text, '2 000') && str_contains($job->text, 'Сумма'));
+    }
+
     public function test_order_preview_opens_by_uuid_without_login(): void
     {
         $order = Order::factory()->completed()->for($this->location)->create();

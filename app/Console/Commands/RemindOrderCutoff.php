@@ -25,36 +25,39 @@ class RemindOrderCutoff extends Command
         $now = now();
         $time = $now->format('H:i:s');
         $limit = $now->copy()->addMinutes($lead)->format('H:i:s');
-
-        $rules = LocationCutoff::query()
-            ->where('weekday', $now->dayOfWeekIso)
-            ->where('is_open', true)
-            ->whereNotNull('cutoff_time')
-            ->where('cutoff_time', '>', $time)
-            ->where('cutoff_time', '<=', $limit)
-            ->whereHas('location', fn ($query) => $query->where('is_active', true))
-            ->with('location.defaultEmployee')
-            ->get();
-
         $sent = 0;
 
-        foreach ($rules as $rule) {
-            $location = $rule->location;
+        // A rule's deadline falls today for its own day, or this morning for yesterday's day when it runs past midnight.
+        foreach ([[$now->copy()->startOfDay(), false], [$now->copy()->startOfDay()->subDay(), true]] as [$orderDate, $endsNextDay]) {
+            $rules = LocationCutoff::query()
+                ->where('weekday', $orderDate->dayOfWeekIso)
+                ->where('is_open', true)
+                ->where('ends_next_day', $endsNextDay)
+                ->whereNotNull('cutoff_time')
+                ->where('cutoff_time', '>', $time)
+                ->where('cutoff_time', '<=', $limit)
+                ->whereHas('location', fn ($query) => $query->where('is_active', true))
+                ->with('location.defaultEmployee')
+                ->get();
 
-            $ordered = Order::query()
-                ->where('location_id', $location->id)
-                ->whereDate('order_date', $now->toDateString())
-                ->where('status', '!=', 'draft')
-                ->exists();
+            foreach ($rules as $rule) {
+                $location = $rule->location;
 
-            $firstTime = Cache::add('cutoff-reminder.'.$location->id.'.'.$now->toDateString(), true, now()->addDay());
+                $ordered = Order::query()
+                    ->where('location_id', $location->id)
+                    ->whereDate('order_date', $orderDate->toDateString())
+                    ->where('status', '!=', 'draft')
+                    ->exists();
 
-            if ($ordered || ! $firstTime) {
-                continue;
+                $firstTime = Cache::add('cutoff-reminder.'.$location->id.'.'.$orderDate->toDateString(), true, now()->addDays(2));
+
+                if ($ordered || ! $firstTime) {
+                    continue;
+                }
+
+                $notifier->cutoffReminder($location, (string) $rule->cutoffTimeLabel());
+                $sent++;
             }
-
-            $notifier->cutoffReminder($location, (string) $rule->cutoffTimeLabel());
-            $sent++;
         }
 
         $this->info("Reminders sent: {$sent}");

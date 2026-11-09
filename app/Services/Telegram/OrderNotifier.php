@@ -8,6 +8,7 @@ use App\Jobs\SendTelegramMessage;
 use App\Models\Employee;
 use App\Models\Location;
 use App\Models\Order;
+use App\Support\Money;
 use Illuminate\Support\Facades\App;
 
 class OrderNotifier
@@ -83,7 +84,8 @@ class OrderNotifier
     private function adminOrderText(Order $order): string
     {
         $lines = $order->lines
-            ->map(fn ($line) => '• '.$line->item->name_ru.' — '.$line->quantity.' '.$line->item->unit->label())
+            ->map(fn ($line) => '• '.$line->item->name_ru.' — '.$line->quantity.' '.$line->item->unit->label()
+                .($line->total() !== null ? ' × '.Money::format($line->price).' = '.Money::format($line->total()) : ''))
             ->implode(PHP_EOL);
 
         $location = $order->location;
@@ -96,7 +98,7 @@ class OrderNotifier
             'map' => $location->yandex_url ? PHP_EOL.$location->yandex_url : '',
             'employee' => $order->employee?->name ?? '—',
             'lines' => $lines,
-            'positions' => $order->lines->count(),
+            'positions' => $order->lines->count().($order->total() > 0 ? PHP_EOL.'Сумма: '.Money::format($order->total()).($order->hasUnpricedLines() ? ' (без позиций без цены)' : '') : ''),
             'link' => route('orders.preview', $order),
         ]);
     }

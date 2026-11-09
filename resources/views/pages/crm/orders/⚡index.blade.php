@@ -5,6 +5,7 @@ use App\Models\Company;
 use App\Models\Order;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Url;
@@ -98,6 +99,7 @@ new #[Layout('layouts::crm')] class extends Component
             ->with('location.company')
             ->withCount('lines')
             ->withSum('lines', 'quantity')
+            ->withSum('lines as lines_total', DB::raw('price * quantity'))
             ->orderByDesc('order_date')->orderByDesc('id')
             ->paginate(25);
     }
@@ -155,6 +157,7 @@ new #[Layout('layouts::crm')] class extends Component
                             <th class="crm-th">{{ __('crm.orders.date') }}</th>
                             <th class="crm-th">{{ __('crm.orders.location') }}</th>
                             <th class="crm-th">{{ __('crm.orders.positions') }}</th>
+                            <th class="crm-th text-right">{{ __('crm.orders.total') }}</th>
                             <th class="crm-th">{{ __('crm.common.status') }}</th>
                             <th class="crm-th">{{ __('crm.orders.signs') }}</th>
                             <th class="crm-th text-right">{{ __('crm.common.actions') }}</th>
@@ -170,6 +173,7 @@ new #[Layout('layouts::crm')] class extends Component
                                     <p class="text-xs text-navy-600">{{ $order->location->name }}</p>
                                 </td>
                                 <td class="crm-td">{{ $order->lines_count }} · {{ (int) $order->lines_sum_quantity }}</td>
+                                <td class="crm-td text-right">{{ $order->lines_total > 0 ? \App\Support\Money::format($order->lines_total) : '—' }}</td>
                                 <td class="crm-td"><span class="crm-badge {{ $this->badgeClass($order->status) }}">{{ $order->status->label() }}</span></td>
                                 <td class="crm-td">
                                     <div class="flex flex-wrap gap-1">

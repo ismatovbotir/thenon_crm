@@ -4,6 +4,7 @@ use App\Enums\OrderStatus;
 use App\Models\Item;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Support\Money;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Computed;
@@ -239,6 +240,13 @@ new #[Layout('layouts::crm')] class extends Component
                         <div class="min-w-0 flex-1">
                             <p class="truncate font-medium text-navy-800">{{ $line->item->name }}</p>
                             <p class="text-xs text-navy-600">{{ $line->item->code }} · {{ $line->item->unit->label() }} · ×{{ $line->item->step }}</p>
+                            <p class="text-xs text-navy-600">
+                                @if ($line->price !== null)
+                                    {{ Money::format($line->price) }}@if (! $this->editable) × {{ $line->quantity }}@endif
+                                @else
+                                    {{ __('crm.orders.no_price') }}
+                                @endif
+                            </p>
                         </div>
                         @if ($this->editable)
                             <div class="w-28">
@@ -252,9 +260,17 @@ new #[Layout('layouts::crm')] class extends Component
                         @else
                             <p class="font-semibold text-navy-800">{{ $line->quantity }}</p>
                         @endif
+                        <p class="w-32 text-right font-semibold text-navy-800">{{ $line->total() !== null ? Money::format($line->total()) : '—' }}</p>
                     </li>
                 @endforeach
             </ul>
+            <div class="flex flex-wrap items-center justify-between gap-2 border-t border-navy-100 bg-navy-50/60 px-5 py-3">
+                <span class="font-semibold text-navy-800">{{ __('crm.orders.total') }}</span>
+                <span class="text-lg font-bold text-navy-800">{{ Money::format($this->order->total()) }}</span>
+                @if ($this->order->hasUnpricedLines())
+                    <p class="w-full text-xs text-amber-700">{{ __('crm.orders.partial_total') }}</p>
+                @endif
+            </div>
         @endif
 
         @if ($this->editable)

@@ -82,4 +82,20 @@ class Order extends Model
     {
         return $this->hasMany(OrderItem::class);
     }
+
+    /**
+     * Sum of the priced lines (price is recorded on each line when it is added to the order).
+     */
+    public function total(): float
+    {
+        return (float) $this->lines->sum(fn (OrderItem $line) => $line->total() ?? 0);
+    }
+
+    /**
+     * Whether some line has no price, so the total is only partial.
+     */
+    public function hasUnpricedLines(): bool
+    {
+        return $this->lines->contains(fn (OrderItem $line) => $line->price === null);
+    }
 }

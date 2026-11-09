@@ -10,7 +10,7 @@ new class extends Component
     #[Locked]
     public int $locationId;
 
-    /** @var array<int, array{is_open: bool, time: string}> */
+    /** @var array<int, array{is_open: bool, time: string, next_day: bool}> */
     public array $rows = [];
 
     public function mount(int $locationId): void
@@ -25,6 +25,7 @@ new class extends Component
             $this->rows[$weekday] = [
                 'is_open' => $rule?->is_open ?? true,
                 'time' => $rule?->cutoffTimeLabel() ?? '',
+                'next_day' => (bool) $rule?->ends_next_day,
             ];
         }
     }
@@ -49,6 +50,8 @@ new class extends Component
         foreach ($this->rows as $weekday => $row) {
             $time = $row['is_open'] && $row['time'] !== '' ? $row['time'] : null;
 
+            $nextDay = $time !== null && (bool) ($row['next_day'] ?? false);
+
             if ($row['is_open'] && $time === null) {
                 LocationCutoff::query()->where('location_id', $this->locationId)->where('weekday', $weekday)->delete();
 
@@ -57,7 +60,7 @@ new class extends Component
 
             LocationCutoff::query()->updateOrCreate(
                 ['location_id' => $this->locationId, 'weekday' => $weekday],
-                ['is_open' => (bool) $row['is_open'], 'cutoff_time' => $time],
+                ['is_open' => (bool) $row['is_open'], 'cutoff_time' => $time, 'ends_next_day' => $nextDay],
             );
         }
 
@@ -80,8 +83,14 @@ new class extends Component
                             {{ __('crm.schedule.open') }}
                         </label>
                         @if ($row['is_open'])
-                            <div class="ml-auto">
-                                <input type="time" wire:model="rows.{{ $weekday }}.time" aria-label="{{ __('crm.schedule.cutoff') }}" class="crm-input w-32 py-1.5">
+                            <div class="ml-auto space-y-1.5">
+                                <input type="time" wire:model.live="rows.{{ $weekday }}.time" aria-label="{{ __('crm.schedule.cutoff') }}" class="crm-input w-32 py-1.5">
+                                @if ($row['time'] !== '')
+                                    <label class="flex items-center gap-2 text-xs text-navy-700">
+                                        <input type="checkbox" wire:model="rows.{{ $weekday }}.next_day" class="size-4 rounded border-navy-100 text-navy-800 focus:ring-gold-400">
+                                        {{ __('crm.schedule.next_day') }}
+                                    </label>
+                                @endif
                                 @error('rows.'.$weekday.'.time')
                                     <p class="mt-1 text-xs text-red-600">{{ $message }}</p>
                                 @enderror

@@ -206,7 +206,7 @@ new class extends Component
                                     <div class="flex justify-end gap-1">
                                         <button type="button" wire:click="edit({{ $employee->id }})" class="crm-btn-ghost">{{ __('crm.common.edit') }}</button>
                                         @if ($employee->isRegistered())
-                                            <button type="button" wire:click="unlinkTelegram({{ $employee->id }})" wire:confirm="{{ __('crm.employees.unlink_confirm') }}" class="crm-btn-ghost">{{ __('crm.employees.unlink') }}</button>
+                                            <x-crm.confirm action="unlinkTelegram({{ $employee->id }})" :message="__('crm.employees.unlink_confirm')" class="crm-btn-ghost">{{ __('crm.employees.unlink') }}</x-crm.confirm>
                                         @endif
                                         <button type="button" wire:click="toggleActive({{ $employee->id }})" class="crm-btn-ghost">
                                             {{ $employee->is_active ? __('crm.common.deactivate') : __('crm.common.activate') }}

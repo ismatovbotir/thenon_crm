@@ -94,7 +94,7 @@ new #[Layout('layouts::crm')] class extends Component
                     @if ($token->isRevoked())
                         <span class="crm-badge bg-navy-100 text-navy-600">{{ __('crm.settings.revoked') }}</span>
                     @else
-                        <button type="button" wire:click="revoke({{ $token->id }})" wire:confirm="{{ __('crm.settings.revoke') }}?" class="crm-btn-ghost text-red-600">{{ __('crm.settings.revoke') }}</button>
+                        <x-crm.confirm action="revoke({{ $token->id }})" :message="__('crm.settings.revoke').'?'" danger class="crm-btn-ghost text-red-600">{{ __('crm.settings.revoke') }}</x-crm.confirm>
                     @endif
                 </div>
             @empty

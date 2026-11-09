@@ -49,7 +49,11 @@ class SendTelegramMessage implements ShouldQueue
         }
 
         if (! $telegram->sendMessage($this->chatId, $this->text, $extra)) {
-            throw new RuntimeException('Telegram did not accept the message.');
+            throw new RuntimeException(sprintf(
+                'Telegram did not accept the message to chat %d. %s',
+                $this->chatId,
+                $telegram->lastError ?? '',
+            ));
         }
 
         if ($this->adminOrderId) {
