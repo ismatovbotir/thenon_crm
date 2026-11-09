@@ -15,11 +15,25 @@
         ['key' => 'orders', 'route' => 'crm.orders.index', 'match' => 'crm.orders.*', 'icon' => 'M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2M9 5h6M9 12h6M9 16h4'],
         ['key' => 'companies', 'route' => 'crm.companies.index', 'match' => 'crm.companies.*', 'icon' => 'M3 21h18M5 21V7l7-4 7 4v14M9 9h1m4 0h1M9 13h1m4 0h1M9 17h1m4 0h1'],
         ['key' => 'items', 'route' => 'crm.items.index', 'match' => 'crm.items.*', 'icon' => 'M21 8l-9-5-9 5 9 5 9-5zM3 8v8l9 5 9-5V8M12 13v8'],
-        ['key' => 'reports', 'route' => 'crm.reports', 'match' => 'crm.reports*', 'icon' => 'M4 20V10m6 10V4m6 16v-7m4 7H2'],
+        ['key' => 'reports', 'icon' => 'M4 20V10m6 10V4m6 16v-7m4 7H2', 'match' => ['crm.reports', 'crm.reports.*'], 'children' => [
+            ['key' => 'report_production', 'route' => 'crm.reports', 'match' => 'crm.reports'],
+            ['key' => 'report_sales', 'route' => 'crm.reports.sales'],
+            ['key' => 'report_daily', 'route' => 'crm.reports.daily'],
+            ['key' => 'report_compare', 'route' => 'crm.reports.compare'],
+            ['key' => 'report_missing', 'route' => 'crm.reports.missing'],
+        ]],
         ['key' => 'settings', 'route' => 'crm.settings', 'admin' => true, 'icon' => 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z'],
+        ['key' => 'tv', 'route' => 'crm.tv', 'admin' => true, 'icon' => 'M3 5h18v11H3zM8 20h8M12 16v4'],
         ['key' => 'system', 'route' => 'crm.system', 'admin' => true, 'icon' => 'M5 12h14M5 12a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2M5 12a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2M7 8h.01M7 16h.01'],
     ];
-    $navigation = array_values(array_filter($navigation, fn ($entry) => ! ($entry['admin'] ?? false) || $user?->isAdmin()));
+    $visible = fn ($entry) => ! ($entry['admin'] ?? false) || $user?->isAdmin();
+    $navigation = array_values(array_filter(array_map(function ($entry) use ($visible) {
+        if (isset($entry['children'])) {
+            $entry['children'] = array_values(array_filter($entry['children'], $visible));
+        }
+
+        return $entry;
+    }, array_filter($navigation, $visible)), fn ($entry) => ! isset($entry['children']) || $entry['children'] !== []));
 @endphp
 <body class="bg-navy-50 font-sans text-navy-900 antialiased" x-data="{ sidebar: false }">
 
@@ -36,7 +50,29 @@
 
         <nav class="flex-1 space-y-1 overflow-y-auto px-3 py-4">
             @foreach ($navigation as $item)
-                @if (isset($item['route']))
+                @if (isset($item['children']))
+                    @php($groupActive = request()->routeIs(...$item['match']))
+                    <div x-data="{ open: {{ $groupActive ? 'true' : 'false' }} }" class="space-y-1">
+                        <button type="button" @click="open = ! open" @class([
+                            'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition hover:bg-white/10 hover:text-white',
+                            'text-white' => $groupActive,
+                        ])>
+                            <svg class="size-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="{{ $item['icon'] }}"/></svg>
+                            <span class="flex-1 text-left">{{ __('crm.nav.'.$item['key']) }}</span>
+                            <svg class="size-4 shrink-0 transition" :class="{ 'rotate-180': open }" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg>
+                        </button>
+                        <div x-show="open" x-cloak class="ml-5 space-y-1 border-l border-white/10 pl-3">
+                            @foreach ($item['children'] as $child)
+                                <a href="{{ route($child['route']) }}" wire:navigate
+                                   @class([
+                                       'block rounded-lg px-3 py-2 text-sm font-medium transition',
+                                       'bg-gold-400 text-navy-950' => request()->routeIs($child['match'] ?? $child['route']),
+                                       'hover:bg-white/10 hover:text-white' => ! request()->routeIs($child['match'] ?? $child['route']),
+                                   ])>{{ __('crm.nav.'.$child['key']) }}</a>
+                            @endforeach
+                        </div>
+                    </div>
+                @elseif (isset($item['route']))
                     <a href="{{ route($item['route']) }}" wire:navigate
                        @class([
                            'group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition',

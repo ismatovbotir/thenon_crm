@@ -229,4 +229,34 @@ class OrderProcessingTest extends TestCase
         $this->assertSame(OrderStatus::Done, $notSent->fresh()->status);
         $this->assertSame(OrderStatus::Sent, $foreign->fresh()->status);
     }
+
+    public function test_the_delivery_form_prints_items_prices_and_a_qr_code_for_the_map_link(): void
+    {
+        $this->location->update(['yandex_url' => 'https://yandex.uz/maps/-/CCUabc', 'address' => 'Chilonzor 5']);
+        $order = Order::factory()->completed()->for($this->location)->create();
+        $order->lines()->create(['item_id' => $this->item->id, 'quantity' => 10, 'price' => 2000]);
+
+        $this->actingAs(User::factory()->create());
+
+        $this->get(route('crm.orders.print', $order))
+            ->assertOk()
+            ->assertSee('Расходная накладная № '.$order->id, false)
+            ->assertSee('Burger Chain')
+            ->assertSee('Chilonzor 5')
+            ->assertSee($this->item->name_ru)
+            ->assertSee('20 000,00', false)
+            ->assertSee('<svg', false)
+            ->assertSee('https://yandex.uz/maps/-/CCUabc', false);
+    }
+
+    public function test_the_delivery_form_works_without_a_map_link_and_requires_login(): void
+    {
+        $order = Order::factory()->completed()->for($this->location)->create();
+        $order->lines()->create(['item_id' => $this->item->id, 'quantity' => 5]);
+
+        $this->get(route('crm.orders.print', $order))->assertRedirect(route('crm.login'));
+
+        $this->actingAs(User::factory()->create());
+        $this->get(route('crm.orders.print', $order))->assertOk()->assertDontSee('<svg', false);
+    }
 }

@@ -4,6 +4,7 @@ use App\Http\Controllers\DevTelegramController;
 use App\Http\Controllers\EmployeeAppController;
 use App\Http\Controllers\ItemImageController;
 use App\Http\Controllers\OrderPreviewController;
+use App\Http\Controllers\OrderPrintController;
 use App\Http\Controllers\ReportExportController;
 use App\Http\Controllers\TelegramWebhookController;
 use App\Http\Middleware\SetLocale;
@@ -32,10 +33,16 @@ Route::prefix('crm')->name('crm.')->group(function () {
         Route::livewire('items', 'pages::crm.items.index')->name('items.index');
         Route::livewire('orders', 'pages::crm.orders.index')->name('orders.index');
         Route::livewire('reports', 'pages::crm.reports')->name('reports');
+        Route::livewire('reports/sales', 'pages::crm.reports.sales')->name('reports.sales');
+        Route::livewire('reports/daily', 'pages::crm.reports.daily')->name('reports.daily');
+        Route::livewire('reports/compare', 'pages::crm.reports.compare')->name('reports.compare');
+        Route::livewire('reports/missing', 'pages::crm.reports.missing')->name('reports.missing');
         Route::get('reports/export', ReportExportController::class)->name('reports.export');
         Route::livewire('settings', 'pages::crm.settings')->name('settings');
         Route::livewire('system', 'pages::crm.system')->name('system');
+        Route::livewire('tv', 'pages::crm.tv')->name('tv');
         Route::livewire('orders/{order}', 'pages::crm.orders.show')->name('orders.show');
+        Route::get('orders/{order}/print', OrderPrintController::class)->name('orders.print');
 
         Route::post('logout', function (Request $request) {
             Auth::logout();
@@ -54,6 +61,8 @@ Route::prefix('dev/telegram')->name('dev.telegram')->group(function () {
 });
 
 Route::get('media/items/{item}', ItemImageController::class)->middleware('throttle:240,1')->name('media.item');
+
+Route::livewire('tv/{token}', 'pages::tv.board')->middleware('throttle:120,1')->name('tv.board');
 
 Route::get('o/{order:uuid}', OrderPreviewController::class)->middleware('throttle:60,1')->name('orders.preview');
 

@@ -37,7 +37,10 @@ class Order extends Model
             if ($order->wasChanged('status')) {
                 app(OrderNotifier::class)->statusChanged($order);
 
-                if ($order->status === OrderStatus::Completed) {
+                // 1C only receives orders an operator has confirmed (Accepted, or any later status).
+                $confirmed = in_array($order->status, [OrderStatus::Accepted, OrderStatus::Done, OrderStatus::Sent, OrderStatus::Delivered], true);
+
+                if ($confirmed && $order->synced_1c_at === null) {
                     SyncOrderToOneC::dispatch($order->id);
                 }
             }

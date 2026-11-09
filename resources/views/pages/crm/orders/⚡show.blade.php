@@ -178,6 +178,7 @@ new #[Layout('layouts::crm')] class extends Component
             <h2 class="mt-1 text-2xl font-semibold text-navy-800">{{ __('crm.orders.order_no', ['id' => $this->order->id]) }}</h2>
         </div>
         <div class="flex flex-wrap items-center gap-2">
+            <a href="{{ route('crm.orders.print', $this->order) }}" target="_blank" class="crm-btn-secondary">{{ __('crm.orders.print') }}</a>
             <x-crm.sign :on="$this->order->admin_notified_at !== null" :label="__('crm.orders.admin_informed')" />
             <x-crm.sign :on="$this->order->synced_1c_at !== null" :label="__('crm.orders.synced_1c')" />
             <span class="crm-badge bg-navy-100 px-3 py-1.5 text-sm text-navy-800">{{ $this->order->status->label() }}</span>
