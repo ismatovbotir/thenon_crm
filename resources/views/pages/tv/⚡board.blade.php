@@ -50,7 +50,7 @@ new #[Layout('layouts::tv')] class extends Component
 @php($slides = $this->slides)
 @php($rotate = $slides->count() > 1)
 
-<div wire:poll.20s class="flex h-screen flex-col overflow-hidden"
+<div class="flex h-screen flex-col overflow-hidden"
      x-data="{
          i: 0,
          started: Date.now(),
@@ -78,7 +78,7 @@ new #[Layout('layouts::tv')] class extends Component
         <div class="flex items-center gap-4">
             <img src="{{ asset('images/brand/logo.jpg') }}" alt="" class="size-14 rounded-full">
             <div>
-                <h1 class="text-3xl font-bold tracking-wide xl:text-4xl" @if ($rotate) x-text="cur('name', @js($slides->first()['company']->name ?? 'THE NON'))" @endif>{{ $screen->company?->name ?? ($slides->first()['company']->name ?? 'THE NON') }}</h1>
+                <h1 class="text-3xl font-bold tracking-wide xl:text-4xl" x-text="cur('name', @js($slides->first()['company']->name ?? 'THE NON'))">{{ $screen->company?->name ?? ($slides->first()['company']->name ?? 'THE NON') }}</h1>
                 <p class="text-lg text-navy-100/70">{{ __('tv.subtitle') }}</p>
             </div>
         </div>
@@ -87,7 +87,7 @@ new #[Layout('layouts::tv')] class extends Component
             <div class="text-right">
                 <p class="text-sm uppercase tracking-wider text-navy-100/60">{{ __('tv.received') }}</p>
                 <p class="text-4xl font-bold xl:text-5xl">
-                    <span class="text-gold-400" @if ($rotate) x-text="cur('ordered', 0)" @endif>{{ $slides->first()['board']['ordered'] ?? 0 }}</span><span class="text-navy-100/50"> / <span @if ($rotate) x-text="cur('expected', 0)" @endif>{{ $slides->first()['board']['expected'] ?? 0 }}</span></span>
+                    <span class="text-gold-400" x-text="cur('ordered', 0)">{{ $slides->first()['board']['ordered'] ?? 0 }}</span><span class="text-navy-100/50"> / <span x-text="cur('expected', 0)">{{ $slides->first()['board']['expected'] ?? 0 }}</span></span>
                 </p>
             </div>
             <div class="text-right">
@@ -106,7 +106,11 @@ new #[Layout('layouts::tv')] class extends Component
 
     {{-- Slides --}}
     <div class="min-h-0 flex-1 overflow-hidden">
-        <div class="flex h-full transition-transform duration-700 ease-in-out" :style="`transform: translateX(-${i * 100}%)`">
+        {{-- The island refreshes alone every 20 seconds: header, clock and slide position are left untouched. --}}
+        @island(name: 'board')
+        @php($screen = $this->screen())
+        @php($slides = $this->slides)
+        <div wire:poll.20s class="flex h-full transition-transform duration-700 ease-in-out" :style="`transform: translateX(-${i * 100}%)`">
             @forelse ($slides as $slide)
                 @php($board = $slide['board'])
                 {{-- Lists of many locations flow into 2 or 3 columns (6 rows each); the widths follow the columns needed. --}}
@@ -133,7 +137,7 @@ new #[Layout('layouts::tv')] class extends Component
                                 @foreach ($board['missing']->take($missCols * 6) as $row)
                                     @php($late = $row['minutes_left'] !== null && $row['minutes_left'] < 0)
                                     @php($soon = $row['minutes_left'] !== null && $row['minutes_left'] >= 0 && $row['minutes_left'] <= 30)
-                                    <div @class([
+                                    <div wire:key="missing-{{ $slide['company']->id }}-{{ $row['location']->id }}" @class([
                                         'min-w-0 rounded-2xl border-l-8',
                                         'px-5 py-3' => $missCols === 1,
                                         'px-3 py-2' => $missCols > 1,
@@ -182,7 +186,7 @@ new #[Layout('layouts::tv')] class extends Component
                             <div class="grid gap-3 {{ $gridCols[$orderCols] }}">
                                 @foreach ($board['orders']->take($orderCols * 6) as $row)
                                     @php($order = $row['order'])
-                                    <div @class([
+                                    <div wire:key="order-{{ $order->id }}" @class([
                                         'flex min-w-0 items-center justify-between gap-3 rounded-2xl',
                                         'px-5 py-3' => $orderCols === 1,
                                         'px-3 py-2' => $orderCols > 1,
@@ -218,7 +222,7 @@ new #[Layout('layouts::tv')] class extends Component
 
                         <div class="divide-y divide-white/10 rounded-2xl bg-white/10">
                             @forelse ($board['totals']->take(10) as $total)
-                                <div class="flex items-baseline justify-between gap-3 px-4 py-2.5">
+                                <div wire:key="total-{{ $slide['company']->id }}-{{ $total['name'] }}" class="flex items-baseline justify-between gap-3 px-4 py-2.5">
                                     <p class="min-w-0 truncate text-lg">{{ $total['name'] }}</p>
                                     <p class="shrink-0 text-xl font-bold tabular-nums">{{ $total['quantity'] }} <span class="text-sm font-normal text-navy-100/70">{{ $total['unit'] }}</span></p>
                                 </div>
@@ -233,5 +237,6 @@ new #[Layout('layouts::tv')] class extends Component
                 <p class="flex h-full w-full items-center justify-center text-3xl text-navy-100/70">{{ __('tv.nothing') }}</p>
             @endforelse
         </div>
+        @endisland
     </div>
 </div>
