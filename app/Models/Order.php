@@ -91,7 +91,7 @@ class Order extends Model
      */
     public function total(): float
     {
-        return (float) $this->lines->sum(fn (OrderItem $line) => $line->total() ?? 0);
+        return (float) $this->lines->where('is_active', true)->sum(fn (OrderItem $line) => $line->total() ?? 0);
     }
 
     /**
@@ -99,6 +99,6 @@ class Order extends Model
      */
     public function hasUnpricedLines(): bool
     {
-        return $this->lines->contains(fn (OrderItem $line) => $line->price === null);
+        return $this->lines->where('is_active', true)->contains(fn (OrderItem $line) => $line->price === null);
     }
 }

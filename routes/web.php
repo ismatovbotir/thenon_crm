@@ -41,6 +41,7 @@ Route::prefix('crm')->name('crm.')->group(function () {
         Route::livewire('settings', 'pages::crm.settings')->name('settings');
         Route::livewire('system', 'pages::crm.system')->name('system');
         Route::livewire('tv', 'pages::crm.tv')->name('tv');
+        Route::get('orders/print', [OrderPrintController::class, 'bulk'])->name('orders.print.bulk');
         Route::livewire('orders/{order}', 'pages::crm.orders.show')->name('orders.show');
         Route::get('orders/{order}/print', OrderPrintController::class)->name('orders.print');
 

@@ -20,6 +20,9 @@ new #[Layout('layouts::crm')] class extends Component
     /** @var array<int, int|string> */
     public array $quantities = [];
 
+    /** @var array<int, string> */
+    public array $comments = [];
+
     public string $newItemId = '';
 
     public int|string $newQuantity = '';
@@ -80,6 +83,7 @@ new #[Layout('layouts::crm')] class extends Component
     private function loadQuantities(): void
     {
         $this->quantities = $this->order->lines->mapWithKeys(fn (OrderItem $line) => [$line->id => $line->quantity])->all();
+        $this->comments = $this->order->lines->mapWithKeys(fn (OrderItem $line) => [$line->id => (string) $line->comment])->all();
     }
 
     private function refreshOrder(): void
@@ -122,6 +126,31 @@ new #[Layout('layouts::crm')] class extends Component
         );
 
         $line->update(['quantity' => (int) $this->quantities[$lineId]]);
+        $this->refreshOrder();
+    }
+
+    /**
+     * Mark a line active or inactive (for example when 1C cannot supply it). Allowed at any status.
+     */
+    public function toggleLine(int $lineId): void
+    {
+        $line = $this->order->lines->firstWhere('id', $lineId) ?? abort(404);
+
+        $line->update(['is_active' => ! $line->is_active]);
+        $this->refreshOrder();
+    }
+
+    public function saveComment(int $lineId): void
+    {
+        $line = $this->order->lines->firstWhere('id', $lineId) ?? abort(404);
+
+        $this->validate(
+            ['comments.'.$lineId => ['nullable', 'string', 'max:500']],
+            attributes: ['comments.'.$lineId => __('crm.orders.comment')],
+        );
+
+        $comment = trim((string) ($this->comments[$lineId] ?? ''));
+        $line->update(['comment' => $comment === '' ? null : $comment]);
         $this->refreshOrder();
     }
 
@@ -237,9 +266,12 @@ new #[Layout('layouts::crm')] class extends Component
         @else
             <ul class="divide-y divide-navy-100">
                 @foreach ($this->order->lines as $line)
-                    <li wire:key="line-{{ $line->id }}" class="flex flex-wrap items-center gap-3 px-5 py-3">
+                    <li wire:key="line-{{ $line->id }}" @class(['flex flex-wrap items-center gap-3 px-5 py-3', 'bg-navy-50/60 opacity-70' => ! $line->is_active])>
                         <div class="min-w-0 flex-1">
-                            <p class="truncate font-medium text-navy-800">{{ $line->item->name }}</p>
+                            <p @class(['truncate font-medium text-navy-800', 'line-through' => ! $line->is_active])>{{ $line->item->name }}</p>
+                            @unless ($line->is_active)
+                                <span class="crm-badge bg-navy-100 text-navy-600">{{ __('crm.orders.line_inactive') }}</span>
+                            @endunless
                             <p class="text-xs text-navy-600">{{ $line->item->code }} · {{ $line->item->unit->label() }} · ×{{ $line->item->step }}</p>
                             <p class="text-xs text-navy-600">
                                 @if ($line->price !== null)
@@ -261,7 +293,14 @@ new #[Layout('layouts::crm')] class extends Component
                         @else
                             <p class="font-semibold text-navy-800">{{ $line->quantity }}</p>
                         @endif
-                        <p class="w-32 text-right font-semibold text-navy-800">{{ $line->total() !== null ? Money::format($line->total()) : '—' }}</p>
+                        <p @class(['w-32 text-right font-semibold text-navy-800', 'line-through' => ! $line->is_active])>{{ $line->total() !== null ? Money::format($line->total()) : '—' }}</p>
+                        <button type="button" wire:click="toggleLine({{ $line->id }})" class="crm-btn-ghost">{{ $line->is_active ? __('crm.orders.line_deactivate') : __('crm.orders.line_activate') }}</button>
+                        <div class="w-full">
+                            <input type="text" maxlength="500" wire:model="comments.{{ $line->id }}" wire:change="saveComment({{ $line->id }})" placeholder="{{ __('crm.orders.comment') }}" aria-label="{{ __('crm.orders.comment') }}" class="crm-input py-1.5 text-sm">
+                            @error('comments.'.$line->id)
+                                <p class="mt-1 text-xs text-red-600">{{ $message }}</p>
+                            @enderror
+                        </div>
                     </li>
                 @endforeach
             </ul>

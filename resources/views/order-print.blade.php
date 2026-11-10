@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex, nofollow">
-    <title>{{ __('print.title', ['id' => $order->id, 'date' => $order->order_date->format('d.m.Y')]) }}</title>
+    <title>{{ $sheets->count() === 1 ? __('print.title', ['id' => $sheets->first()['order']->id, 'date' => $sheets->first()['order']->order_date->format('d.m.Y')]) : __('print.title_many', ['count' => $sheets->count()]) }}</title>
     <style>
         @page { size: A4 portrait; margin: 12mm; }
         * { box-sizing: border-box; }
@@ -36,7 +36,8 @@
         @media print {
             body { background: #fff; }
             .toolbar { display: none; }
-            .sheet { width: auto; min-height: 0; margin: 0; padding: 0; }
+            .sheet { width: auto; min-height: 0; margin: 0; padding: 0; break-after: page; }
+            .sheet:last-of-type { break-after: auto; }
             tr { break-inside: avoid; }
         }
     </style>
@@ -44,9 +45,11 @@
 <body>
     <div class="toolbar">
         <button type="button" onclick="window.print()">{{ __('print.print') }}</button>
-        <a href="{{ route('crm.orders.show', $order) }}">{{ __('print.back') }}</a>
+        <a href="{{ $sheets->count() === 1 ? route('crm.orders.show', $sheets->first()['order']) : route('crm.orders.index') }}">{{ __('print.back') }}</a>
     </div>
 
+    @foreach ($sheets as $sheet)
+        @php(extract($sheet))
     <div class="sheet">
         <h1>{{ __('print.title', ['id' => $order->id, 'date' => $order->order_date->format('d.m.Y')]) }}</h1>
 
@@ -103,8 +106,8 @@
         <div class="totals">
             <span>{{ __('print.total') }}:</span>
             <span>{{ $lines->sum('quantity') }}</span>
-            @if ($order->total() > 0)
-                <span>{{ number_format($order->total(), 2, ',', ' ') }} UZS</span>
+            @if ($total > 0)
+                <span>{{ number_format($total, 2, ',', ' ') }} UZS</span>
             @endif
         </div>
         <p class="count">{{ __('print.positions', ['count' => $lines->count()]) }}</p>
@@ -118,5 +121,6 @@
             <p class="note">{{ $mapUrl }}</p>
         @endif
     </div>
+    @endforeach
 </body>
 </html>

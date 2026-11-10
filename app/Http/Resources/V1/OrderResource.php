@@ -36,6 +36,8 @@ class OrderResource extends JsonResource
                 'name_uz' => $line->item->name_uz,
                 'unit' => $line->item->unit->value,
                 'quantity' => $line->quantity,
+                'is_active' => $line->is_active,
+                'comment' => $line->comment,
                 'price' => $line->price !== null ? (float) $line->price : null,
                 'total' => $line->total(),
             ])->all(),

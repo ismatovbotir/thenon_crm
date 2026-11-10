@@ -28,6 +28,11 @@ new #[Layout('layouts::crm')] class extends Component
     #[Url(as: 'q')]
     public string $search = '';
 
+    /** @var list<int|string> */
+    public array $selected = [];
+
+    public ?string $notice = null;
+
     public function mount(): void
     {
         if (! request()->has('date')) {
@@ -44,6 +49,7 @@ new #[Layout('layouts::crm')] class extends Component
     {
         if (in_array($property, ['date', 'status', 'companyId', 'search'], true)) {
             $this->resetPage();
+            $this->selected = [];
         }
     }
 
@@ -104,6 +110,36 @@ new #[Layout('layouts::crm')] class extends Component
             ->paginate(25);
     }
 
+    public function selectPage(bool $on): void
+    {
+        $this->selected = $on ? $this->orders->pluck('id')->map(fn ($id) => (string) $id)->all() : [];
+    }
+
+    /**
+     * Move the ticked orders to a status. Only orders inside the current filter are touched; delivered
+     * orders and drafts (which an operator may only complete from the order page) are skipped.
+     */
+    public function applyStatus(string $status): void
+    {
+        $target = OrderStatus::tryFrom($status);
+
+        abort_unless(in_array($target, [OrderStatus::Accepted, OrderStatus::Done, OrderStatus::Sent], true), 422);
+
+        $ids = collect($this->selected)->map(fn ($id) => (int) $id)->filter()->unique()->values();
+
+        $orders = $this->filtered()->whereIn('id', $ids)
+            ->whereNotIn('status', [OrderStatus::Draft->value, OrderStatus::Delivered->value, $target->value])
+            ->get();
+
+        foreach ($orders as $order) {
+            $order->update(['status' => $target]);
+        }
+
+        $this->notice = __('crm.orders.bulk_done', ['done' => $orders->count(), 'skipped' => $ids->count() - $orders->count()]);
+        $this->selected = [];
+        unset($this->orders, $this->counts);
+    }
+
     public function badgeClass(OrderStatus $status): string
     {
         return match ($status) {
@@ -145,6 +181,21 @@ new #[Layout('layouts::crm')] class extends Component
         <input type="search" wire:model.live.debounce.300ms="search" placeholder="{{ __('crm.orders.search') }}" class="crm-input sm:max-w-xs">
     </div>
 
+    @if ($notice)
+        <p class="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{{ $notice }}</p>
+    @endif
+
+    @if (count($selected) > 0)
+        <div class="crm-card flex flex-wrap items-center gap-2 px-4 py-3">
+            <span class="text-sm font-semibold text-navy-800">{{ __('crm.orders.selected', ['count' => count($selected)]) }}</span>
+            @foreach ([\App\Enums\OrderStatus::Accepted, \App\Enums\OrderStatus::Done, \App\Enums\OrderStatus::Sent] as $target)
+                <x-crm.confirm wire:key="bulk-{{ $target->value }}" action="applyStatus('{{ $target->value }}')" :message="__('crm.orders.bulk_confirm', ['count' => count($selected), 'status' => $target->label()])" class="crm-btn-secondary">→ {{ $target->label() }}</x-crm.confirm>
+            @endforeach
+            <a href="{{ route('crm.orders.print.bulk', ['ids' => implode(',', $selected)]) }}" target="_blank" class="crm-btn-gold">{{ __('crm.orders.print_selected') }}</a>
+            <button type="button" wire:click="selectPage(false)" class="crm-btn-ghost ml-auto">{{ __('crm.orders.clear_selection') }}</button>
+        </div>
+    @endif
+
     <div class="crm-card overflow-hidden">
         @if ($this->orders->isEmpty())
             <p class="p-10 text-center text-navy-600">{{ __('crm.orders.empty') }}</p>
@@ -153,6 +204,7 @@ new #[Layout('layouts::crm')] class extends Component
                 <table class="min-w-full divide-y divide-navy-100">
                     <thead class="bg-navy-50/60">
                         <tr>
+                            <th class="crm-th w-10"><input type="checkbox" aria-label="{{ __('crm.orders.select_all') }}" wire:click="selectPage($event.target.checked)" @checked(count($selected) > 0 && count($selected) === $this->orders->count())></th>
                             <th class="crm-th">#</th>
                             <th class="crm-th">{{ __('crm.orders.date') }}</th>
                             <th class="crm-th">{{ __('crm.orders.location') }}</th>
@@ -166,6 +218,7 @@ new #[Layout('layouts::crm')] class extends Component
                     <tbody class="divide-y divide-navy-100">
                         @foreach ($this->orders as $order)
                             <tr wire:key="order-{{ $order->id }}" class="hover:bg-navy-50/40">
+                                <td class="crm-td"><input type="checkbox" value="{{ $order->id }}" wire:model.live="selected" aria-label="{{ __('crm.orders.select') }} #{{ $order->id }}"></td>
                                 <td class="crm-td font-mono text-xs">{{ $order->id }}</td>
                                 <td class="crm-td">{{ $order->order_date->format('d.m.Y') }}</td>
                                 <td class="crm-td">

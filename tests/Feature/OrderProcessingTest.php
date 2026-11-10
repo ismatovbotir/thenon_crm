@@ -259,4 +259,55 @@ class OrderProcessingTest extends TestCase
         $this->actingAs(User::factory()->create());
         $this->get(route('crm.orders.print', $order))->assertOk()->assertDontSee('<svg', false);
     }
+
+    public function test_a_line_can_be_switched_off_with_a_comment_and_leaves_the_total(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $order = Order::factory()->create(['status' => OrderStatus::Accepted]);
+        $keep = $order->lines()->create(['item_id' => Item::factory()->create()->id, 'quantity' => 2, 'price' => 1000]);
+        $drop = $order->lines()->create(['item_id' => Item::factory()->create()->id, 'quantity' => 3, 'price' => 500]);
+
+        Livewire::test('pages::crm.orders.show', ['order' => $order])
+            ->call('toggleLine', $drop->id)
+            ->set('comments.'.$drop->id, 'Нет в наличии')
+            ->call('saveComment', $drop->id)
+            ->assertHasNoErrors();
+
+        $this->assertFalse($drop->fresh()->is_active);
+        $this->assertSame('Нет в наличии', $drop->fresh()->comment);
+        $this->assertTrue($keep->fresh()->is_active);
+        $this->assertSame(2000.0, $order->fresh()->load('lines')->total());
+    }
+
+    public function test_the_orders_list_applies_a_status_to_ticked_orders_and_skips_drafts_and_delivered(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $completed = Order::factory()->create(['status' => OrderStatus::Completed, 'order_date' => today()]);
+        $draft = Order::factory()->create(['status' => OrderStatus::Draft, 'order_date' => today()]);
+        $delivered = Order::factory()->create(['status' => OrderStatus::Delivered, 'order_date' => today()]);
+
+        Livewire::test('pages::crm.orders.index')
+            ->set('selected', [(string) $completed->id, (string) $draft->id, (string) $delivered->id])
+            ->call('applyStatus', 'accepted')
+            ->assertSet('selected', []);
+
+        $this->assertSame(OrderStatus::Accepted, $completed->fresh()->status);
+        $this->assertSame(OrderStatus::Draft, $draft->fresh()->status);
+        $this->assertSame(OrderStatus::Delivered, $delivered->fresh()->status);
+    }
+
+    public function test_bulk_print_renders_one_sheet_per_order_and_needs_login(): void
+    {
+        $first = Order::factory()->create();
+        $second = Order::factory()->create();
+        $url = route('crm.orders.print.bulk', ['ids' => $first->id.','.$second->id]);
+
+        $this->get($url)->assertRedirect();
+
+        $this->actingAs(User::factory()->create());
+        $html = $this->get($url)->assertOk()->getContent();
+
+        $this->assertSame(2, substr_count($html, 'class="sheet"'));
+        $this->get(route('crm.orders.print.bulk'))->assertNotFound();
+    }
 }
