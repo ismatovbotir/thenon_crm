@@ -16,12 +16,7 @@
             <button type="button" wire:click="setRange('last_month')" class="crm-btn-secondary">{{ __('crm.reports.range_last_month') }}</button>
         </div>
         @if ($company)
-            <select wire:model.live="companyId" aria-label="{{ __('crm.nav.companies') }}" class="crm-input sm:w-56">
-                <option value="">{{ __('crm.orders.all_companies') }}</option>
-                @foreach ($companies as $item)
-                    <option value="{{ $item->id }}" wire:key="company-{{ $item->id }}">{{ $item->name }}</option>
-                @endforeach
-            </select>
+            <x-crm.company-picker :companies="$companies" />
         @endif
         @if ($export && $valid)
             <button type="button" wire:click="export" class="crm-btn-gold sm:ml-auto">

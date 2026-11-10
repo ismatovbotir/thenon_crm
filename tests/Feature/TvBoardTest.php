@@ -232,4 +232,32 @@ class TvBoardTest extends TestCase
         $this->assertStringContainsString('grid-cols-3', $html);
         $this->assertStringContainsString('Branch 14', $html);
     }
+
+    public function test_a_client_screen_hides_the_quantities_to_prepare(): void
+    {
+        $company = Company::factory()->create();
+        Location::factory()->for($company)->create(['name' => 'Chilonzor']);
+        $ours = TvScreen::factory()->create();
+        $client = TvScreen::factory()->create(['company_id' => $company->id, 'type' => TvScreen::TYPE_CLIENT]);
+
+        $this->get($ours->url())->assertOk()->assertSee(__('tv.totals', [], 'ru'));
+        $this->get($client->url())->assertOk()->assertSee('Chilonzor')->assertDontSee(__('tv.totals', [], 'ru'));
+    }
+
+    public function test_a_client_screen_needs_a_company(): void
+    {
+        $this->actingAs(User::factory()->admin()->create());
+        $company = Company::factory()->create();
+
+        Livewire::test('pages::crm.tv')
+            ->set('name', 'Client wall')
+            ->set('type', 'client')
+            ->call('create')
+            ->assertHasErrors('companyId')
+            ->set('companyId', $company->id)
+            ->call('create')
+            ->assertHasNoErrors();
+
+        $this->assertSame('client', TvScreen::query()->firstOrFail()->type);
+    }
 }

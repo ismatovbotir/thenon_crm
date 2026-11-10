@@ -363,4 +363,40 @@ class OrderFlowTest extends TestCase
 
         $this->assertDatabaseHas('companies', ['id' => $this->company->id, 'order_days_ahead' => 14, 'next_day_from' => '20:30']);
     }
+
+    public function test_a_tampered_cart_cannot_add_foreign_items_or_invalid_quantities(): void
+    {
+        $foreign = Item::factory()->create(['step' => 1]);
+        $stepped = Item::factory()->create(['step' => 5]);
+        $this->company->items()->attach($stepped, ['price' => 1000]);
+
+        Livewire::test('pages::app.catalog')
+            ->call('startOrder')
+            ->set('quantities', [
+                $foreign->id => 5,
+                $this->item->id => -3,
+                $stepped->id => 7,
+                999999 => 1,
+            ])
+            ->call('saveDraft')
+            ->assertSet('quantities', [$stepped->id => 10]);
+
+        $order = Order::query()->with('lines')->firstOrFail();
+        $this->assertSame([$stepped->id => 10], $order->lines->pluck('quantity', 'item_id')->all());
+        $this->assertSame(10000.0, $order->total());
+    }
+
+    public function test_a_tampered_cart_with_huge_or_non_numeric_values_is_capped_or_dropped(): void
+    {
+        Livewire::test('pages::app.catalog')
+            ->call('startOrder')
+            ->set('quantities', [$this->item->id => PHP_INT_MAX])
+            ->call('saveDraft')
+            ->assertSet('quantities', [$this->item->id => 100000])
+            ->set('quantities', [$this->item->id => 'lots'])
+            ->call('complete')
+            ->assertHasErrors('cart');
+
+        $this->assertSame(OrderStatus::Draft, Order::query()->firstOrFail()->status);
+    }
 }

@@ -48,8 +48,6 @@ new #[Layout('layouts::tv')] class extends Component
 
 @php($screen = $this->screen())
 @php($slides = $this->slides)
-@php($ordered = $slides->sum(fn ($slide) => $slide['board']['ordered']))
-@php($expected = $slides->sum(fn ($slide) => $slide['board']['expected']))
 @php($rotate = $slides->count() > 1)
 
 <div wire:poll.20s class="flex h-screen flex-col overflow-hidden"
@@ -59,6 +57,11 @@ new #[Layout('layouts::tv')] class extends Component
          progress: 0,
          now: new Date(),
          interval: {{ TvBoard::SLIDE_SECONDS }} * 1000,
+         cur(key, fallback) {
+             this.now;
+             const slide = this.$root.querySelectorAll('[data-slide]')[this.i];
+             return slide ? slide.dataset[key] : fallback
+         },
          count() { return this.$root.querySelectorAll('[data-slide]').length },
          next() { this.i = (this.i + 1) % Math.max(1, this.count()); this.started = Date.now() },
          tick() {
@@ -75,7 +78,7 @@ new #[Layout('layouts::tv')] class extends Component
         <div class="flex items-center gap-4">
             <img src="{{ asset('images/brand/logo.jpg') }}" alt="" class="size-14 rounded-full">
             <div>
-                <h1 class="text-3xl font-bold tracking-wide xl:text-4xl">{{ $screen->company?->name ?? 'THE NON' }}</h1>
+                <h1 class="text-3xl font-bold tracking-wide xl:text-4xl" @if ($rotate) x-text="cur('name', @js($slides->first()['company']->name ?? 'THE NON'))" @endif>{{ $screen->company?->name ?? ($slides->first()['company']->name ?? 'THE NON') }}</h1>
                 <p class="text-lg text-navy-100/70">{{ __('tv.subtitle') }}</p>
             </div>
         </div>
@@ -84,7 +87,7 @@ new #[Layout('layouts::tv')] class extends Component
             <div class="text-right">
                 <p class="text-sm uppercase tracking-wider text-navy-100/60">{{ __('tv.received') }}</p>
                 <p class="text-4xl font-bold xl:text-5xl">
-                    <span class="text-gold-400">{{ $ordered }}</span><span class="text-navy-100/50"> / {{ $expected }}</span>
+                    <span class="text-gold-400" @if ($rotate) x-text="cur('ordered', 0)" @endif>{{ $slides->first()['board']['ordered'] ?? 0 }}</span><span class="text-navy-100/50"> / <span @if ($rotate) x-text="cur('expected', 0)" @endif>{{ $slides->first()['board']['expected'] ?? 0 }}</span></span>
                 </p>
             </div>
             <div class="text-right">
@@ -94,26 +97,11 @@ new #[Layout('layouts::tv')] class extends Component
         </div>
     </header>
 
-    {{-- Company tabs with the 15 second timer --}}
+    {{-- Only the current company is shown; a thin bar counts down to the next one --}}
     @if ($rotate)
-        <nav class="flex shrink-0 gap-2 overflow-hidden px-6 xl:px-10" aria-label="{{ __('tv.companies') }}">
-            @foreach ($slides as $slide)
-                @php($pending = $slide['board']['missing']->count())
-                <button type="button" wire:key="tab-{{ $slide['company']->id }}" x-on:click="i = {{ $loop->index }}; started = Date.now()"
-                        class="relative min-w-0 shrink overflow-hidden rounded-xl px-4 py-2 text-left transition"
-                        :class="i === {{ $loop->index }} ? 'bg-white/20 text-white' : 'bg-white/5 text-navy-100/60'">
-                    <span class="flex items-center gap-2">
-                        <span class="truncate text-lg font-semibold">{{ $slide['company']->name }}</span>
-                        @if ($pending > 0)
-                            <span class="shrink-0 rounded-full bg-red-500 px-2 text-sm font-bold text-white">{{ $pending }}</span>
-                        @else
-                            <span class="shrink-0 text-emerald-300">✓</span>
-                        @endif
-                    </span>
-                    <span x-show="i === {{ $loop->index }}" class="absolute inset-x-0 bottom-0 h-1 bg-gold-400" :style="`width: ${progress}%`"></span>
-                </button>
-            @endforeach
-        </nav>
+        <div class="mx-6 h-1 shrink-0 overflow-hidden rounded-full bg-white/10 xl:mx-10" aria-hidden="true">
+            <div class="h-full bg-gold-400" :style="`width: ${progress}%`"></div>
+        </div>
     @endif
 
     {{-- Slides --}}
@@ -125,13 +113,14 @@ new #[Layout('layouts::tv')] class extends Component
                 @php($columnsFor = fn (int $count) => $count <= 6 ? 1 : ($count <= 12 ? 2 : 3))
                 @php($missCols = $columnsFor($board['missing']->count()))
                 @php($orderCols = $columnsFor($board['orders']->count()))
-                @php($totalsSpan = max($missCols, $orderCols) >= 3 ? 2 : 3)
+                @php($showTotals = ! $screen->isClientScreen())
+                @php($totalsSpan = ! $showTotals ? 0 : (max($missCols, $orderCols) >= 3 ? 2 : 3))
                 @php($space = 12 - $totalsSpan)
                 @php($missSpan = min($space - 3, max(3, (int) floor($space * $missCols / ($missCols + $orderCols)))))
                 @php($orderSpan = $space - $missSpan)
-                @php($spans = [2 => 'lg:col-span-2', 3 => 'lg:col-span-3', 4 => 'lg:col-span-4', 5 => 'lg:col-span-5', 6 => 'lg:col-span-6', 7 => 'lg:col-span-7', 9 => 'lg:col-span-9'])
+                @php($spans = [2 => 'lg:col-span-2', 3 => 'lg:col-span-3', 4 => 'lg:col-span-4', 5 => 'lg:col-span-5', 6 => 'lg:col-span-6', 7 => 'lg:col-span-7', 8 => 'lg:col-span-8', 9 => 'lg:col-span-9'])
                 @php($gridCols = [1 => 'grid-cols-1', 2 => 'grid-cols-2', 3 => 'grid-cols-3'])
-                <div data-slide wire:key="slide-{{ $slide['company']->id }}" class="grid h-full w-full shrink-0 gap-6 overflow-hidden px-6 py-4 lg:grid-cols-12 xl:px-10">
+                <div data-slide data-name="{{ $slide['company']->name }}" data-ordered="{{ $board['ordered'] }}" data-expected="{{ $board['expected'] }}" wire:key="slide-{{ $slide['company']->id }}" class="grid h-full w-full shrink-0 gap-6 overflow-hidden px-6 py-4 lg:grid-cols-12 xl:px-10">
 
                     {{-- Not ordered yet, most urgent first --}}
                     <section class="min-h-0 space-y-3 overflow-hidden {{ $spans[$missSpan] }}">
@@ -222,7 +211,8 @@ new #[Layout('layouts::tv')] class extends Component
                         @endif
                     </section>
 
-                    {{-- Quantities to prepare --}}
+                    {{-- Quantities to prepare: ours only, clients never see them --}}
+                    @if ($showTotals)
                     <section class="min-h-0 space-y-3 overflow-hidden {{ $spans[$totalsSpan] }}">
                         <h2 class="text-xl font-semibold uppercase tracking-wide text-emerald-300">{{ __('tv.totals') }}</h2>
 
@@ -237,6 +227,7 @@ new #[Layout('layouts::tv')] class extends Component
                             @endforelse
                         </div>
                     </section>
+                    @endif
                 </div>
             @empty
                 <p class="flex h-full w-full items-center justify-center text-3xl text-navy-100/70">{{ __('tv.nothing') }}</p>

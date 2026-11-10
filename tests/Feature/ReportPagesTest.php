@@ -146,4 +146,18 @@ class ReportPagesTest extends TestCase
             ->call('export')
             ->assertFileDownloaded('the-non-sales-2026-11-01_2026-11-09.xlsx');
     }
+
+    public function test_the_company_filter_is_a_searchable_picker_listing_every_company(): void
+    {
+        Company::factory()->create(['name' => 'Alpha Bakery']);
+        Company::factory()->create(['name' => 'Zeta Market']);
+
+        foreach (['crm.reports', 'crm.reports.sales', 'crm.reports.daily', 'crm.reports.compare'] as $route) {
+            $html = $this->get(route($route))->assertOk()->getContent();
+
+            $this->assertStringContainsString('type="search"', $html, $route);
+            $this->assertStringContainsString('Alpha Bakery', $html, $route);
+            $this->assertStringContainsString('Zeta Market', $html, $route);
+        }
+    }
 }

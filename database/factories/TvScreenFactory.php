@@ -20,6 +20,7 @@ class TvScreenFactory extends Factory
         return [
             'name' => fake()->words(2, true),
             'token' => TvScreen::newToken(),
+            'type' => TvScreen::TYPE_INTERNAL,
             'is_active' => true,
         ];
     }

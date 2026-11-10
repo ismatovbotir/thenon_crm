@@ -50,6 +50,14 @@ new #[Layout('layouts::app')] class extends Component
         $view->title(__('order.title'));
     }
 
+    /**
+     * The cart is a public property, so whatever the browser sends is cleaned the moment it arrives.
+     */
+    public function updatedQuantities(): void
+    {
+        $this->sanitizeQuantities();
+    }
+
     #[Computed]
     public function employee(): Employee
     {
@@ -313,6 +321,7 @@ new #[Layout('layouts::app')] class extends Component
     public function complete(): void
     {
         $this->ensureEditable();
+        $this->sanitizeQuantities();
 
         if ($this->quantities === []) {
             $this->addError('cart', __('order.empty_cart'));
@@ -411,11 +420,38 @@ new #[Layout('layouts::app')] class extends Component
         return $day->gte($this->earliestDate) && $day->lte($this->latestDate);
     }
 
+    /**
+     * Public properties can be changed from the browser, so the cart is rebuilt from what the company may order:
+     * unknown items are dropped and every quantity goes through the item's step and the maximum.
+     */
+    private function sanitizeQuantities(): void
+    {
+        $clean = [];
+
+        foreach ($this->quantities as $itemId => $quantity) {
+            $item = $this->catalogItems->firstWhere('id', (int) $itemId);
+
+            if ($item === null || ! is_numeric($quantity)) {
+                continue;
+            }
+
+            $normalized = $this->normalize($item, (int) $quantity);
+
+            if ($normalized > 0) {
+                $clean[$item->id] = $normalized;
+            }
+        }
+
+        $this->quantities = $clean;
+    }
+
     private function normalize(Item $item, int $quantity): int
     {
         $step = max(1, $item->step);
 
-        return min(self::MAX_QUANTITY, (int) (ceil(max(0, $quantity) / $step) * $step));
+        $quantity = min(self::MAX_QUANTITY, max(0, $quantity));
+
+        return min(self::MAX_QUANTITY, (int) (ceil($quantity / $step) * $step));
     }
 
     private function setQuantityFor(Item $item, int $quantity): void
@@ -438,6 +474,8 @@ new #[Layout('layouts::app')] class extends Component
      */
     private function persist(): void
     {
+        $this->sanitizeQuantities();
+
         DB::transaction(function () {
             $order = Order::query()->where('location_id', $this->locationId)->whereDate('order_date', $this->selectedDate)->lockForUpdate()->first();
 

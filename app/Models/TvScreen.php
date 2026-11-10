@@ -12,9 +12,15 @@ use Illuminate\Support\Str;
 /**
  * A wall-mounted order monitor opened by its secret URL, without logging in.
  */
-#[Fillable(['name', 'token', 'company_id', 'is_active', 'last_seen_at'])]
+#[Fillable(['name', 'token', 'company_id', 'type', 'is_active', 'last_seen_at'])]
 class TvScreen extends Model
 {
+    /** Our own monitor: shows what to prepare. */
+    public const TYPE_INTERNAL = 'internal';
+
+    /** A company's monitor: only its locations, no quantities to prepare. */
+    public const TYPE_CLIENT = 'client';
+
     /** @use HasFactory<TvScreenFactory> */
     use HasFactory;
 
@@ -24,6 +30,11 @@ class TvScreen extends Model
     protected function casts(): array
     {
         return ['is_active' => 'boolean', 'last_seen_at' => 'datetime'];
+    }
+
+    public function isClientScreen(): bool
+    {
+        return $this->type === self::TYPE_CLIENT;
     }
 
     public static function newToken(): string

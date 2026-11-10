@@ -123,12 +123,7 @@ new #[Layout('layouts::crm')] class extends Component
             <input type="date" wire:model.live="to" class="crm-input mt-1 w-44">
         </label>
         <button type="button" wire:click="today" class="crm-btn-secondary">{{ __('crm.orders.today') }}</button>
-        <select wire:model.live="companyId" aria-label="{{ __('crm.nav.companies') }}" class="crm-input sm:w-56">
-            <option value="">{{ __('crm.orders.all_companies') }}</option>
-            @foreach ($this->companies as $company)
-                <option value="{{ $company->id }}" wire:key="company-{{ $company->id }}">{{ $company->name }}</option>
-            @endforeach
-        </select>
+        <x-crm.company-picker :companies="$this->companies" />
     </div>
 
     @unless ($this->rangeIsValid)

@@ -101,4 +101,12 @@ class EmployeeAppAccessTest extends TestCase
 
         $this->get(route('app.home'))->assertUnauthorized();
     }
+
+    public function test_init_data_with_array_style_fields_is_refused_not_a_server_error(): void
+    {
+        config(['telegram.bot_token' => self::TOKEN]);
+
+        $this->postJson(route('app.auth'), ['init_data' => 'x[]=1&hash=abc'])->assertForbidden();
+        $this->postJson(route('app.auth'), ['init_data' => 'user[a]=1&hash=abc'])->assertForbidden();
+    }
 }

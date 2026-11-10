@@ -38,7 +38,7 @@ class InitDataValidator
         $hash = $fields['hash'] ?? null;
         unset($fields['hash']);
 
-        if (! is_string($hash)) {
+        if (! is_string($hash) || collect($fields)->contains(fn ($value) => ! is_string($value))) {
             return null;
         }
 

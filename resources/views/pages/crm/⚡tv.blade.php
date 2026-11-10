@@ -5,6 +5,7 @@ use App\Models\TvScreen;
 use Illuminate\Database\Eloquent\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
+use Illuminate\Validation\Rule;
 use Livewire\Component;
 
 new #[Layout('layouts::crm')] class extends Component
@@ -12,6 +13,8 @@ new #[Layout('layouts::crm')] class extends Component
     public string $name = '';
 
     public ?int $companyId = null;
+
+    public string $type = TvScreen::TYPE_INTERNAL;
 
     public function mount(): void
     {
@@ -47,16 +50,18 @@ new #[Layout('layouts::crm')] class extends Component
 
         $data = $this->validate([
             'name' => ['required', 'string', 'max:100'],
-            'companyId' => ['nullable', 'integer', 'exists:companies,id'],
+            'type' => ['required', Rule::in([TvScreen::TYPE_INTERNAL, TvScreen::TYPE_CLIENT])],
+            'companyId' => [Rule::requiredIf($this->type === TvScreen::TYPE_CLIENT), 'nullable', 'integer', 'exists:companies,id'],
         ], attributes: ['name' => __('crm.tv.name'), 'companyId' => __('crm.tv.company')]);
 
         TvScreen::query()->create([
             'name' => trim($data['name']),
             'company_id' => $data['companyId'] ?? null,
+            'type' => $data['type'],
             'token' => TvScreen::newToken(),
         ]);
 
-        $this->reset('name', 'companyId');
+        $this->reset('name', 'companyId', 'type');
         unset($this->screens);
     }
 
@@ -93,7 +98,7 @@ new #[Layout('layouts::crm')] class extends Component
     <section class="crm-card space-y-4 p-5">
         <p class="text-sm text-navy-600">{{ __('crm.tv.text') }}</p>
 
-        <form wire:submit="create" class="grid gap-3 sm:grid-cols-[1fr_16rem_auto] sm:items-start">
+        <form wire:submit="create" class="grid gap-3 sm:grid-cols-[1fr_12rem_16rem_auto] sm:items-start">
             <div>
                 <input type="text" wire:model="name" placeholder="{{ __('crm.tv.name') }}" class="crm-input">
                 @error('name')
@@ -101,8 +106,18 @@ new #[Layout('layouts::crm')] class extends Component
                 @enderror
             </div>
             <div>
+                <select wire:model.live="type" aria-label="{{ __('crm.tv.type') }}" class="crm-input">
+                    <option value="internal">{{ __('crm.tv.type_internal') }}</option>
+                    <option value="client">{{ __('crm.tv.type_client') }}</option>
+                </select>
+            </div>
+            <div>
                 <select wire:model="companyId" aria-label="{{ __('crm.tv.company') }}" class="crm-input">
-                    <option value="">{{ __('crm.tv.all_companies') }}</option>
+                    @if ($type !== 'client')
+                        <option value="">{{ __('crm.tv.all_companies') }}</option>
+                    @else
+                        <option value="">{{ __('crm.tv.pick_company') }}</option>
+                    @endif
                     @foreach ($this->companies as $company)
                         <option value="{{ $company->id }}" wire:key="company-{{ $company->id }}">{{ $company->name }}</option>
                     @endforeach
@@ -126,6 +141,7 @@ new #[Layout('layouts::crm')] class extends Component
                             @endunless
                         </p>
                         <p class="text-xs text-navy-600">
+                            <span class="crm-badge {{ $screen->isClientScreen() ? 'bg-gold-100 text-gold-800' : 'bg-navy-100 text-navy-700' }}">{{ $screen->isClientScreen() ? __('crm.tv.type_client') : __('crm.tv.type_internal') }}</span>
                             {{ $screen->company?->name ?? __('crm.tv.all_companies') }} ·
                             {{ __('crm.tv.last_seen') }}: {{ $screen->last_seen_at?->format('d.m.Y H:i') ?? __('crm.tv.never') }}
                         </p>
