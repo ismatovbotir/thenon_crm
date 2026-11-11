@@ -10,7 +10,7 @@ new class extends Component
     #[Locked]
     public int $locationId;
 
-    /** @var array<int, array{is_open: bool, time: string, next_day: bool}> */
+    /** @var array<int, array{is_open: bool, time: string, next_day: bool, remind: string}> */
     public array $rows = [];
 
     public function mount(int $locationId): void
@@ -26,6 +26,7 @@ new class extends Component
                 'is_open' => $rule?->is_open ?? true,
                 'time' => $rule?->cutoffTimeLabel() ?? '',
                 'next_day' => (bool) $rule?->ends_next_day,
+                'remind' => $rule?->remindTimeLabel() ?? '',
             ];
         }
     }
@@ -43,8 +44,8 @@ new class extends Component
     public function save(): void
     {
         $this->validate(
-            ['rows.*.time' => ['nullable', 'date_format:H:i']],
-            attributes: ['rows.*.time' => __('crm.schedule.cutoff')],
+            ['rows.*.time' => ['nullable', 'date_format:H:i'], 'rows.*.remind' => ['nullable', 'date_format:H:i']],
+            attributes: ['rows.*.time' => __('crm.schedule.cutoff'), 'rows.*.remind' => __('crm.schedule.remind')],
         );
 
         foreach ($this->rows as $weekday => $row) {
@@ -52,7 +53,9 @@ new class extends Component
 
             $nextDay = $time !== null && (bool) ($row['next_day'] ?? false);
 
-            if ($row['is_open'] && $time === null) {
+            $remind = $row['is_open'] && ($row['remind'] ?? '') !== '' ? $row['remind'] : null;
+
+            if ($row['is_open'] && $time === null && $remind === null) {
                 LocationCutoff::query()->where('location_id', $this->locationId)->where('weekday', $weekday)->delete();
 
                 continue;
@@ -60,7 +63,7 @@ new class extends Component
 
             LocationCutoff::query()->updateOrCreate(
                 ['location_id' => $this->locationId, 'weekday' => $weekday],
-                ['is_open' => (bool) $row['is_open'], 'cutoff_time' => $time, 'ends_next_day' => $nextDay],
+                ['is_open' => (bool) $row['is_open'], 'cutoff_time' => $time, 'ends_next_day' => $nextDay, 'remind_time' => $remind],
             );
         }
 
@@ -92,6 +95,12 @@ new class extends Component
                                     </label>
                                 @endif
                                 @error('rows.'.$weekday.'.time')
+                                    <p class="mt-1 text-xs text-red-600">{{ $message }}</p>
+                                @enderror
+                                <label class="flex items-center justify-end gap-2 text-xs text-navy-700">{{ __('crm.schedule.remind') }}
+                                    <input type="time" wire:model="rows.{{ $weekday }}.remind" aria-label="{{ __('crm.schedule.remind') }}" class="crm-input w-28 py-1">
+                                </label>
+                                @error('rows.'.$weekday.'.remind')
                                     <p class="mt-1 text-xs text-red-600">{{ $message }}</p>
                                 @enderror
                             </div>

@@ -135,5 +135,25 @@
             {{ $slot }}
         </main>
     </div>
+
+    {{-- Toasts: $this->dispatch('notify', message: '…', type: 'success'|'error') from any component --}}
+    <div x-data="{
+             toasts: [],
+             add(detail) {
+                 const toast = { id: Date.now() + Math.random(), message: detail.message ?? '', type: detail.type ?? 'success' }
+                 this.toasts.push(toast)
+                 setTimeout(() => this.toasts = this.toasts.filter((item) => item.id !== toast.id), 4500)
+             },
+         }"
+         x-on:notify.window="add($event.detail)"
+         class="pointer-events-none fixed bottom-4 right-4 z-[80] flex w-full max-w-sm flex-col gap-2 px-4 sm:px-0" aria-live="polite">
+        <template x-for="toast in toasts" :key="toast.id">
+            <div x-transition class="pointer-events-auto flex items-start gap-3 rounded-xl bg-navy-900 px-4 py-3 text-sm text-white shadow-lg ring-1 ring-black/10">
+                <span class="mt-0.5 size-2 shrink-0 rounded-full" :class="toast.type === 'error' ? 'bg-red-400' : 'bg-emerald-400'"></span>
+                <p class="min-w-0 flex-1" x-text="toast.message"></p>
+                <button type="button" class="text-white/60 hover:text-white" x-on:click="toasts = toasts.filter((item) => item.id !== toast.id)" aria-label="{{ __('crm.common.close') }}">×</button>
+            </div>
+        </template>
+    </div>
 </body>
 </html>

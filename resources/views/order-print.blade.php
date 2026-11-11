@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex, nofollow">
-    <title>{{ $sheets->count() === 1 ? __('print.title', ['id' => $sheets->first()['order']->id, 'date' => $sheets->first()['order']->order_date->format('d.m.Y')]) : __('print.title_many', ['count' => $sheets->count()]) }}</title>
+    <title>{{ $sheets->pluck('order.id')->unique()->count() === 1 ? __('print.title', ['id' => $sheets->first()['order']->displayNumber(), 'date' => $sheets->first()['order']->order_date->format('d.m.Y')]) : __('print.title_many', ['count' => $sheets->pluck('order.id')->unique()->count()]) }}</title>
     <style>
         @page { size: A4 portrait; margin: 12mm; }
         * { box-sizing: border-box; }
@@ -12,7 +12,23 @@
         .toolbar { display: flex; gap: 8px; justify-content: center; padding: 12px; }
         .toolbar button, .toolbar a { padding: 8px 18px; border: 1px solid #1f2937; border-radius: 6px; background: #1f2937; color: #fff; font: inherit; text-decoration: none; cursor: pointer; }
         .toolbar a { background: #fff; color: #1f2937; }
-        .sheet { width: 210mm; min-height: 297mm; margin: 0 auto 16px; padding: 12mm; background: #fff; }
+        .page { width: 210mm; min-height: 297mm; margin: 0 auto 16px; padding: 12mm; background: #fff; }
+        .sheet { position: relative; }
+        .per-2 .sheet { padding-bottom: 5mm; margin-bottom: 5mm; border-bottom: 1px dashed #777; }
+        .per-2 .sheet:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: 0; }
+        .per-2 { font-size: 11px; line-height: 1.25; }
+        .per-2 h1 { margin-bottom: 4px; font-size: 15px; }
+        .per-2 .meta p { margin-bottom: 2px; }
+        .per-2 .qr { width: 34mm; }
+        .per-2 .qr svg { width: 28mm; height: 28mm; margin-bottom: 2px; }
+        .per-2 .qr p { font-size: 9px; }
+        .per-2 table { margin-top: 6px; }
+        .per-2 th, .per-2 td { padding: 2px 4px; }
+        .per-2 .totals { margin-top: 5px; padding-top: 4px; }
+        .per-2 .count { margin-top: 4px; padding-top: 4px; }
+        .per-2 .sign { margin-top: 14px; }
+        .per-2 .note { display: none; }
+        .copy-mark { position: absolute; top: 0; right: 0; font-size: 10px; color: #666; }
         h1 { margin: 0 0 10px; font-size: 20px; }
         .head { display: flex; justify-content: space-between; gap: 16px; }
         .meta { flex: 1; }
@@ -36,8 +52,9 @@
         @media print {
             body { background: #fff; }
             .toolbar { display: none; }
-            .sheet { width: auto; min-height: 0; margin: 0; padding: 0; break-after: page; }
-            .sheet:last-of-type { break-after: auto; }
+            .page { width: auto; min-height: 0; margin: 0; padding: 0; break-after: page; }
+            .page:last-of-type { break-after: auto; }
+            .sheet { break-inside: avoid; }
             tr { break-inside: avoid; }
         }
     </style>
@@ -45,13 +62,16 @@
 <body>
     <div class="toolbar">
         <button type="button" onclick="window.print()">{{ __('print.print') }}</button>
-        <a href="{{ $sheets->count() === 1 ? route('crm.orders.show', $sheets->first()['order']) : route('crm.orders.index') }}">{{ __('print.back') }}</a>
+        <a href="{{ request()->fullUrlWithQuery(['per' => $per === 2 ? 1 : 2]) }}">{{ $per === 2 ? __('print.one_per_page') : __('print.two_per_page') }}</a>
+        <a href="{{ $sheets->pluck('order.id')->unique()->count() === 1 ? route('crm.orders.show', $sheets->first()['order']) : route('crm.orders.index') }}">{{ __('print.back') }}</a>
     </div>
 
-    @foreach ($sheets as $sheet)
+    @foreach ($sheets->chunk($per) as $pageSheets)
+    <div class="page per-{{ $per }}">
+    @foreach ($pageSheets as $sheet)
         @php(extract($sheet))
     <div class="sheet">
-        <h1>{{ __('print.title', ['id' => $order->id, 'date' => $order->order_date->format('d.m.Y')]) }}</h1>
+        <h1>{{ __('print.title', ['id' => $order->displayNumber(), 'date' => $order->order_date->format('d.m.Y')]) }}</h1>
 
         <div class="head">
             <div class="meta">
@@ -120,6 +140,8 @@
         @if ($mapUrl)
             <p class="note">{{ $mapUrl }}</p>
         @endif
+    </div>
+    @endforeach
     </div>
     @endforeach
 </body>

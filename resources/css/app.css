@@ -66,6 +66,20 @@
     @apply px-4 py-3 text-sm text-navy-800;
 }
 
+/* Dense data tables: <div class="crm-table-scroll"> with the sticky header, and .crm-dense for compact rows */
+@utility crm-table-scroll {
+    @apply max-h-[calc(100vh-17rem)] min-h-40 overflow-auto;
+
+    & thead th {
+        @apply sticky top-0 z-10 bg-navy-50;
+    }
+}
+
+.crm-dense .crm-td {
+    padding-block: 0.3rem;
+    font-size: 0.8125rem;
+}
+
 @utility crm-badge {
     @apply inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold;
 }

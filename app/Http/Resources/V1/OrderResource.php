@@ -20,6 +20,7 @@ class OrderResource extends JsonResource
         return [
             'id' => $this->id,
             'uuid' => $this->uuid,
+            'one_c_number' => $this->one_c_number,
             'preview_url' => route('orders.preview', $this->resource),
             'date' => $this->order_date->toDateString(),
             'status' => $this->status->value,

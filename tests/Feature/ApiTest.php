@@ -176,4 +176,98 @@ class ApiTest extends TestCase
 
         Livewire::test('pages::crm.settings')->call('createToken')->assertHasErrors('tokenName');
     }
+
+    public function test_1c_fetches_only_accepted_orders_it_has_not_answered_yet(): void
+    {
+        $pending = $this->order(OrderStatus::Accepted);
+        $this->order(OrderStatus::Completed);
+        $this->order(OrderStatus::Done);
+        $answered = $this->order(OrderStatus::Accepted);
+        $answered->update(['synced_1c_at' => now()]);
+
+        $ids = collect($this->getJson('/api/v1/orders?pending_1c=1', $this->auth())->assertOk()->json('data'))->pluck('uuid')->all();
+
+        $this->assertSame([$pending->uuid], $ids);
+    }
+
+    public function test_1c_answers_with_its_number_and_the_order_is_marked_as_in_1c(): void
+    {
+        $order = $this->order(OrderStatus::Accepted);
+
+        $this->postJson('/api/v1/1c/orders/'.$order->uuid, ['one_c_number' => 'НФ-000777'], $this->auth())
+            ->assertOk()
+            ->assertJsonPath('data.one_c_number', 'НФ-000777');
+
+        $order->refresh();
+        $this->assertSame('НФ-000777', $order->one_c_number);
+        $this->assertNotNull($order->synced_1c_at);
+
+        $first = $order->synced_1c_at;
+        $this->travel(5)->minutes();
+        $this->postJson('/api/v1/1c/orders/'.$order->uuid, ['one_c_number' => 'НФ-000777'], $this->auth())->assertOk();
+        $this->assertTrue($order->fresh()->synced_1c_at->equalTo($first));
+    }
+
+    public function test_1c_wins_over_lines_and_prices_but_never_changes_the_status(): void
+    {
+        $order = $this->order(OrderStatus::Accepted);
+        $other = Item::factory()->create(['code' => '00000202']);
+        $new = Item::factory()->create(['code' => '00000303']);
+        $order->lines()->create(['item_id' => $other->id, 'quantity' => 5, 'price' => 100]);
+
+        $this->postJson('/api/v1/1c/orders/'.$order->uuid, [
+            'one_c_number' => 'НФ-1',
+            'status' => 'delivered',
+            'lines' => [
+                ['item_code' => '00000101', 'quantity' => 25, 'price' => 1600, 'comment' => 'Меньше, чем просили'],
+                ['item_code' => '00000303', 'quantity' => 4, 'price' => 700, 'is_active' => false],
+            ],
+        ], $this->auth())->assertOk();
+
+        $order->refresh()->load('lines');
+        $this->assertSame(OrderStatus::Accepted, $order->status);
+
+        $byItem = $order->lines->keyBy('item_id');
+        $this->assertSame(25, $byItem[$this->item->id]->quantity);
+        $this->assertSame('Меньше, чем просили', $byItem[$this->item->id]->comment);
+        $this->assertFalse($byItem[$new->id]->is_active);
+        $this->assertFalse($byItem[$other->id]->is_active);
+        $this->assertSame(25 * 1600.0, $order->total());
+    }
+
+    public function test_1c_cannot_touch_drafts_or_send_bad_data(): void
+    {
+        $draft = $this->order(OrderStatus::Draft);
+
+        $this->postJson('/api/v1/1c/orders/'.$draft->uuid, ['one_c_number' => 'X'], $this->auth())->assertUnprocessable();
+
+        $order = $this->order(OrderStatus::Accepted);
+        $this->postJson('/api/v1/1c/orders/'.$order->uuid, [], $this->auth())->assertUnprocessable();
+        $this->postJson('/api/v1/1c/orders/'.$order->uuid, ['one_c_number' => 'X', 'lines' => [['item_code' => 'missing', 'quantity' => 1]]], $this->auth())->assertUnprocessable();
+        $this->postJson('/api/v1/1c/orders/'.$order->uuid, ['one_c_number' => 'X'])->assertUnauthorized();
+    }
+
+    public function test_1c_imports_items_by_code_and_can_switch_off_the_missing_ones(): void
+    {
+        $keep = Item::factory()->create(['code' => 'A1', 'name_ru' => 'Старое', 'unit' => 'pcs']);
+        $gone = Item::factory()->create(['code' => 'B2', 'is_active' => true]);
+
+        $this->postJson('/api/v1/1c/items', [
+            'full_sync' => true,
+            'items' => [
+                ['code' => 'A1', 'name_ru' => 'Лепёшка', 'unit' => 'pack', 'step' => 5],
+                ['code' => 'C3', 'name_uz' => 'Non', 'category' => 'Bread'],
+            ],
+        ], $this->auth())->assertOk()->assertJsonPath('data', ['created' => 1, 'updated' => 1, 'deactivated' => 1]);
+
+        $this->assertSame('Лепёшка', $keep->fresh()->name_ru);
+        $this->assertSame(5, $keep->fresh()->step);
+        $this->assertFalse($gone->fresh()->is_active);
+        $created = Item::query()->where('code', 'C3')->firstOrFail();
+        $this->assertSame('Non', $created->name_ru);
+        $this->assertSame('Non', $created->name_uz);
+
+        $this->postJson('/api/v1/1c/items', ['items' => [['code' => 'A1']]], $this->auth())->assertUnprocessable();
+        $this->postJson('/api/v1/1c/items', ['items' => [['code' => 'D4', 'name_ru' => 'X']]])->assertUnauthorized();
+    }
 }

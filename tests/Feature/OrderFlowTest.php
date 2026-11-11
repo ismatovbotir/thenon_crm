@@ -171,7 +171,7 @@ class OrderFlowTest extends TestCase
             && str_contains($job->text, route('orders.preview', Order::query()->firstOrFail())));
     }
 
-    public function test_completed_order_informs_the_admin_but_is_synced_to_1c_only_once_confirmed(): void
+    public function test_completed_order_informs_the_admin_and_waits_for_1c_to_confirm_it(): void
     {
         config(['telegram.bot_token' => '123:ABC', 'telegram.admin_chat_id' => '777']);
         Http::fake(['api.telegram.org/*' => Http::response(['ok' => true])]);
@@ -180,20 +180,11 @@ class OrderFlowTest extends TestCase
 
         $order = Order::query()->firstOrFail();
         $this->assertNotNull($order->admin_notified_at);
-        $this->assertNull($order->synced_1c_at);
 
         $order->update(['status' => OrderStatus::Accepted]);
 
-        $this->assertNotNull($order->fresh()->synced_1c_at);
-    }
-
-    public function test_an_order_moved_past_confirmation_without_being_synced_is_synced_then(): void
-    {
-        $order = Order::factory()->completed()->for($this->location)->create();
-
-        $order->update(['status' => OrderStatus::Done]);
-
-        $this->assertNotNull($order->fresh()->synced_1c_at);
+        // 1C fetches and confirms on its own schedule: nothing is pushed to it.
+        $this->assertNull($order->fresh()->synced_1c_at);
     }
 
     public function test_drafts_are_not_marked_or_synced(): void

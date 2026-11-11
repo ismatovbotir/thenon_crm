@@ -145,6 +145,7 @@ new #[Layout('layouts::crm')] class extends Component
         $item->fill($attributes)->save();
 
         $this->showForm = false;
+        $this->dispatch('notify', message: __('crm.common.saved'));
         $this->reset('image', 'removeImage');
     }
 

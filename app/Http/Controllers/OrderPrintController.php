@@ -16,9 +16,17 @@ class OrderPrintController extends Controller
     /**
      * A4 delivery form for the driver: items, signatures and a QR code with the location's Yandex Maps link.
      */
-    public function __invoke(Order $order): View
+    public function __invoke(Request $request, Order $order): View
     {
-        return $this->render(new Collection([$order]));
+        return $this->render(new Collection([$order]), $this->perPage($request, 1));
+    }
+
+    /**
+     * Forms per A4 sheet: 1 or 2 (?per=). One order printed 2-up gives two copies on the same sheet.
+     */
+    private function perPage(Request $request, int $default): int
+    {
+        return $request->query('per') === '2' ? 2 : ($request->query('per') === '1' ? 1 : $default);
     }
 
     /**
@@ -35,13 +43,13 @@ class OrderPrintController extends Controller
 
         abort_if($orders->isEmpty(), 404);
 
-        return $this->render($orders);
+        return $this->render($orders, $this->perPage($request, 2));
     }
 
     /**
      * @param  Collection<int, Order>  $orders
      */
-    private function render(Collection $orders): View
+    private function render(Collection $orders, int $per): View
     {
         App::setLocale('ru');
 
@@ -61,6 +69,10 @@ class OrderPrintController extends Controller
             ];
         });
 
-        return view('order-print', ['sheets' => $sheets]);
+        if ($per === 2 && $sheets->count() === 1) {
+            $sheets = $sheets->concat($sheets);
+        }
+
+        return view('order-print', ['sheets' => $sheets->values(), 'per' => $per]);
     }
 }

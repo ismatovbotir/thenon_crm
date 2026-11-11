@@ -104,24 +104,29 @@ class OrderNotifier
     }
 
     /**
-     * Remind the default employee that ordering closes soon and nothing has been ordered yet.
+     * Remind every active, registered employee of the location that nothing has been ordered yet
+     * (the default employee is included even when not listed among the location's employees).
      */
-    public function cutoffReminder(Location $location, string $cutoffTime): void
+    public function cutoffReminder(Location $location, ?string $cutoffTime): void
     {
-        $location->loadMissing('defaultEmployee');
-        $employee = $this->recipient($location);
+        $location->loadMissing('defaultEmployee', 'employees');
 
-        if (! $employee) {
-            return;
+        $recipients = $location->employees
+            ->when($location->defaultEmployee, fn ($employees, $default) => $employees->push($default))
+            ->filter(fn (Employee $employee) => $employee->is_active && $employee->telegram_id !== null)
+            ->unique('id');
+
+        foreach ($recipients as $employee) {
+            $language = $employee->language ?? Language::Ru;
+
+            SendTelegramMessage::dispatch(
+                (int) $employee->telegram_id,
+                $cutoffTime !== null
+                    ? __('telegram.notify.reminder', ['location' => $location->name, 'time' => $cutoffTime], $language->value)
+                    : __('telegram.notify.reminder_open', ['location' => $location->name], $language->value),
+                __('telegram.open_app', [], $language->value),
+            );
         }
-
-        $language = $employee->language ?? Language::Ru;
-
-        SendTelegramMessage::dispatch(
-            (int) $employee->telegram_id,
-            __('telegram.notify.reminder', ['location' => $location->name, 'time' => $cutoffTime], $language->value),
-            __('telegram.open_app', [], $language->value),
-        );
     }
 
     /**

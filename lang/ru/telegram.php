@@ -13,6 +13,7 @@ return [
         'status' => 'Заказ на :date («:location»): :status.',
         'confirm_delivery' => 'Когда хлеб приедет, подтвердите доставку в приложении.',
         'admin_order' => "Новый заказ на :date\nКомпания: :company\nТочка: :location\n:address:map\nЗаказал(а): :employee\n\n:lines\n\nПозиций: :positions\n:link",
+        'reminder_open' => 'Напоминание: для «:location» ещё нет заказа на сегодня.',
         'reminder' => 'Напоминание: для «:location» ещё нет заказа. Приём заказов до :time.',
     ],
     'app' => [

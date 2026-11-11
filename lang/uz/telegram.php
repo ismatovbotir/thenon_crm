@@ -12,6 +12,7 @@ return [
     'notify' => [
         'status' => ':date sanasidagi buyurtma («:location»): :status.',
         'confirm_delivery' => 'Non yetib kelgach, yetkazilganini ilovada tasdiqlang.',
+        'reminder_open' => 'Eslatma: «:location» uchun bugunga hali buyurtma yo‘q.',
         'reminder' => 'Eslatma: «:location» uchun hali buyurtma yo‘q. Buyurtma qabul qilish soat :time gacha.',
     ],
     'app' => [

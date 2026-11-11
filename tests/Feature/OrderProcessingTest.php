@@ -310,4 +310,72 @@ class OrderProcessingTest extends TestCase
         $this->assertSame(2, substr_count($html, 'class="sheet"'));
         $this->get(route('crm.orders.print.bulk'))->assertNotFound();
     }
+
+    public function test_the_orders_list_sorts_and_selects_everything_matching_the_filter(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $small = Order::factory()->create(['status' => OrderStatus::Completed, 'order_date' => today()]);
+        $small->lines()->create(['item_id' => Item::factory()->create()->id, 'quantity' => 1, 'price' => 100]);
+        $big = Order::factory()->create(['status' => OrderStatus::Completed, 'order_date' => today()]);
+        $big->lines()->create(['item_id' => Item::factory()->create()->id, 'quantity' => 9, 'price' => 100]);
+
+        $component = Livewire::test('pages::crm.orders.index')
+            ->call('sortBy', 'total')
+            ->assertSet('dir', 'asc')
+            ->assertSeeInOrder(['#'.$small->id, '#'.$big->id]);
+
+        $component->call('sortBy', 'total')->assertSet('dir', 'desc');
+        $component->call('selectAllMatching')->assertSet('selected', [(string) $small->id, (string) $big->id]);
+
+        $component->call('sortBy', 'nonsense')->assertStatus(422);
+    }
+
+    public function test_bulk_print_puts_two_orders_on_each_a4_page_and_one_order_can_be_doubled(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $orders = Order::factory()->count(3)->create();
+        $ids = $orders->pluck('id')->implode(',');
+
+        $html = $this->get(route('crm.orders.print.bulk', ['ids' => $ids]))->assertOk()->getContent();
+        $this->assertSame(2, substr_count($html, 'class="page per-2"'));
+        $this->assertSame(3, substr_count($html, 'class="sheet"'));
+
+        $single = $this->get(route('crm.orders.print.bulk', ['ids' => $orders->first()->id, 'per' => 1]))->getContent();
+        $this->assertSame(1, substr_count($single, 'class="sheet"'));
+
+        $doubled = $this->get(route('crm.orders.print', [$orders->first(), 'per' => 2]))->getContent();
+        $this->assertSame(2, substr_count($doubled, 'class="sheet"'));
+        $this->assertSame(1, substr_count($doubled, 'class="page per-2"'));
+    }
+
+    public function test_documents_show_the_number_from_1c_and_fall_back_to_our_id(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $withNumber = Order::factory()->create(['one_c_number' => 'НФ-000123']);
+        $without = Order::factory()->create();
+
+        $this->assertSame('НФ-000123', $withNumber->displayNumber());
+        $this->assertSame((string) $without->id, $without->displayNumber());
+
+        $this->get(route('crm.orders.print', $withNumber))->assertOk()->assertSee('НФ-000123');
+        $this->get(route('crm.orders.show', $withNumber))->assertOk()->assertSee('НФ-000123');
+
+        Livewire::test('pages::crm.orders.index')->set('search', 'НФ-000123')->assertSee('НФ-000123')->assertDontSee('#'.$without->id);
+    }
+
+    public function test_lines_cannot_be_edited_in_the_crm_once_1c_has_the_order(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $order = Order::factory()->create(['status' => OrderStatus::Accepted, 'synced_1c_at' => now()]);
+        $line = $order->lines()->create(['item_id' => Item::factory()->create()->id, 'quantity' => 5]);
+
+        Livewire::test('pages::crm.orders.show', ['order' => $order])->assertSee(__('crm.orders.locked_by_1c'));
+
+        foreach ([['toggleLine', [$line->id]], ['saveComment', [$line->id]], ['saveQuantity', [$line->id]], ['removeLine', [$line->id]], ['addLine', []]] as [$action, $arguments]) {
+            Livewire::test('pages::crm.orders.show', ['order' => $order])->call($action, ...$arguments)->assertForbidden();
+        }
+
+        $this->assertTrue($line->fresh()->is_active);
+        $this->assertSame(5, $line->fresh()->quantity);
+    }
 }

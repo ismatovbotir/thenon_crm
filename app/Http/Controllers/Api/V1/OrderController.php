@@ -28,6 +28,7 @@ class OrderController extends Controller
             'company_id' => ['nullable', 'integer'],
             'location_id' => ['nullable', 'integer'],
             'updated_since' => ['nullable', 'date'],
+            'pending_1c' => ['nullable', 'boolean'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:200'],
         ]);
 
@@ -43,6 +44,7 @@ class OrderController extends Controller
             )
             ->when($filters['location_id'] ?? null, fn ($query, $id) => $query->where('location_id', $id))
             ->when($filters['company_id'] ?? null, fn ($query, $id) => $query->whereHas('location', fn ($q) => $q->where('company_id', $id)))
+            ->when($filters['pending_1c'] ?? false, fn ($query) => $query->whereNull('synced_1c_at')->where('status', OrderStatus::Accepted->value))
             ->when($filters['updated_since'] ?? null, fn ($query, $since) => $query->where('updated_at', '>=', Carbon::parse($since)))
             ->orderBy('order_date')->orderBy('id')
             ->paginate((int) ($filters['per_page'] ?? 100));

@@ -3,7 +3,6 @@
 namespace App\Models;
 
 use App\Enums\OrderStatus;
-use App\Jobs\SyncOrderToOneC;
 use App\Services\Telegram\OrderNotifier;
 use Database\Factories\OrderFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -13,7 +12,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['location_id', 'employee_id', 'order_date', 'status', 'completed_at', 'delivered_at', 'admin_notified_at', 'synced_1c_at'])]
+#[Fillable(['location_id', 'employee_id', 'order_date', 'status', 'completed_at', 'delivered_at', 'admin_notified_at', 'synced_1c_at', 'one_c_number'])]
 class Order extends Model
 {
     /** @use HasFactory<OrderFactory> */
@@ -37,12 +36,6 @@ class Order extends Model
             if ($order->wasChanged('status')) {
                 app(OrderNotifier::class)->statusChanged($order);
 
-                // 1C only receives orders an operator has confirmed (Accepted, or any later status).
-                $confirmed = in_array($order->status, [OrderStatus::Accepted, OrderStatus::Done, OrderStatus::Sent, OrderStatus::Delivered], true);
-
-                if ($confirmed && $order->synced_1c_at === null) {
-                    SyncOrderToOneC::dispatch($order->id);
-                }
             }
         });
     }
@@ -84,6 +77,14 @@ class Order extends Model
     public function lines(): HasMany
     {
         return $this->hasMany(OrderItem::class);
+    }
+
+    /**
+     * The number shown on documents: the one 1C assigned, or our own id until 1C has answered.
+     */
+    public function displayNumber(): string
+    {
+        return $this->one_c_number !== null && $this->one_c_number !== '' ? $this->one_c_number : (string) $this->id;
     }
 
     /**

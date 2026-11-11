@@ -2,6 +2,8 @@
 
 return [
     'title' => 'Расходная накладная № :id от :date',
+    'one_per_page' => 'Varaqda 1 ta',
+    'two_per_page' => 'Varaqda 2 ta',
     'title_many' => 'Накладные (:count)',
     'print' => 'Печать',
     'back' => 'Назад к заказу',

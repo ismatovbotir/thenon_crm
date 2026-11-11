@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * Ordering rule for one location on one ISO weekday (1 = Monday ... 7 = Sunday).
  * A missing row means no restriction that day.
  */
-#[Fillable(['location_id', 'weekday', 'is_open', 'cutoff_time', 'ends_next_day'])]
+#[Fillable(['location_id', 'weekday', 'is_open', 'cutoff_time', 'ends_next_day', 'remind_time'])]
 class LocationCutoff extends Model
 {
     /** @use HasFactory<LocationCutoffFactory> */
@@ -34,6 +34,14 @@ class LocationCutoff extends Model
     public function cutoffTimeLabel(): ?string
     {
         return $this->cutoff_time ? substr((string) $this->cutoff_time, 0, 5) : null;
+    }
+
+    /**
+     * Time of day (HH:MM) to remind the location to order on this weekday, or null for no reminder.
+     */
+    public function remindTimeLabel(): ?string
+    {
+        return $this->remind_time ? substr((string) $this->remind_time, 0, 5) : null;
     }
 
     /**

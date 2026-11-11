@@ -130,6 +130,7 @@ new class extends Component
             ->update(['default_employee_id' => null]);
 
         $this->showForm = false;
+        $this->dispatch('notify', message: __('crm.common.saved'));
         unset($this->employees);
     }
 

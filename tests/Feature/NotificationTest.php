@@ -275,4 +275,32 @@ class NotificationTest extends TestCase
             $this->assertStringContainsString('Telegram error 403: Forbidden: bot was blocked by the user', $exception->getMessage());
         }
     }
+
+    public function test_a_scheduled_reminder_goes_to_every_employee_of_the_location_at_the_set_time(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-11-09 16:05', 'Asia/Tashkent'));
+        LocationCutoff::factory()->for($this->location)->create(['weekday' => 1, 'cutoff_time' => null, 'remind_time' => '16:00']);
+        $second = Employee::factory()->create(['company_id' => $this->location->company_id, 'telegram_id' => 777, 'is_active' => true]);
+        $inactive = Employee::factory()->create(['company_id' => $this->location->company_id, 'telegram_id' => 888, 'is_active' => false]);
+        $this->location->employees()->attach([$second->id, $inactive->id]);
+
+        $this->artisan('orders:remind-cutoff')->assertSuccessful();
+        $this->artisan('orders:remind-cutoff');
+
+        $chats = collect($this->sent())->pluck('chat_id')->all();
+        $this->assertContains(777, $chats);
+        $this->assertNotContains(888, $chats);
+        $this->assertSame(count($chats), count(array_unique($chats)));
+    }
+
+    public function test_a_scheduled_reminder_is_skipped_once_the_location_has_ordered_or_the_day_is_closed(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-11-09 16:05', 'Asia/Tashkent'));
+        LocationCutoff::factory()->for($this->location)->create(['weekday' => 1, 'cutoff_time' => null, 'remind_time' => '16:00']);
+        Order::factory()->create(['location_id' => $this->location->id, 'order_date' => '2026-11-09', 'status' => 'completed']);
+
+        $this->artisan('orders:remind-cutoff');
+
+        $this->assertCount(0, $this->sent());
+    }
 }

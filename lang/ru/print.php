@@ -2,6 +2,8 @@
 
 return [
     'title' => 'Расходная накладная № :id от :date',
+    'one_per_page' => '1 на листе',
+    'two_per_page' => '2 на листе',
     'title_many' => 'Накладные (:count)',
     'print' => 'Печать',
     'back' => 'Назад к заказу',

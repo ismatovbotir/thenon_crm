@@ -106,6 +106,7 @@ new #[Layout('layouts::crm')] class extends Component
         }
 
         $this->showForm = false;
+        $this->dispatch('notify', message: __('crm.common.saved'));
     }
 
     public function toggleActive(int $id): void

@@ -28,10 +28,16 @@ new #[Layout('layouts::crm')] class extends Component
     #[Url(as: 'q')]
     public string $search = '';
 
+    #[Url]
+    public string $sort = 'date';
+
+    #[Url]
+    public string $dir = 'desc';
+
+    public int $perPage = 25;
+
     /** @var list<int|string> */
     public array $selected = [];
-
-    public ?string $notice = null;
 
     public function mount(): void
     {
@@ -47,10 +53,32 @@ new #[Layout('layouts::crm')] class extends Component
 
     public function updated(string $property): void
     {
-        if (in_array($property, ['date', 'status', 'companyId', 'search'], true)) {
+        if (in_array($property, ['date', 'status', 'companyId', 'search', 'perPage'], true)) {
             $this->resetPage();
             $this->selected = [];
         }
+    }
+
+    private const SORTS = [
+        'id' => 'id',
+        'date' => 'order_date',
+        'positions' => 'lines_sum_quantity',
+        'total' => 'lines_total',
+        'status' => 'status',
+    ];
+
+    public function sortBy(string $column): void
+    {
+        abort_unless(array_key_exists($column, self::SORTS), 422);
+
+        $this->dir = $this->sort === $column && $this->dir === 'asc' ? 'desc' : 'asc';
+        $this->sort = $column;
+        $this->resetPage();
+    }
+
+    public function updatedPerPage(): void
+    {
+        $this->perPage = in_array($this->perPage, [25, 50, 100], true) ? $this->perPage : 25;
     }
 
     public function today(): void
@@ -78,8 +106,9 @@ new #[Layout('layouts::crm')] class extends Component
             ->when($this->companyId !== '', fn ($query) => $query->whereHas('location', fn ($q) => $q->where('company_id', (int) $this->companyId)))
             ->when(trim($this->search) !== '', function ($query) {
                 $term = '%'.addcslashes(trim($this->search), '%_\\').'%';
-                $query->whereHas('location', fn ($q) => $q->where('name', 'like', $term)
-                    ->orWhereHas('company', fn ($c) => $c->where('name', 'like', $term)));
+                $query->where(fn ($q) => $q->where('one_c_number', 'like', $term)
+                    ->orWhereHas('location', fn ($l) => $l->where('name', 'like', $term)
+                        ->orWhereHas('company', fn ($c) => $c->where('name', 'like', $term))));
             });
     }
 
@@ -106,13 +135,24 @@ new #[Layout('layouts::crm')] class extends Component
             ->withCount('lines')
             ->withSum('lines', 'quantity')
             ->withSum('lines as lines_total', DB::raw('price * quantity'))
-            ->orderByDesc('order_date')->orderByDesc('id')
-            ->paginate(25);
+            ->orderBy(self::SORTS[$this->sort] ?? 'order_date', $this->dir === 'asc' ? 'asc' : 'desc')
+            ->orderByDesc('id')
+            ->paginate($this->perPage);
     }
 
     public function selectPage(bool $on): void
     {
         $this->selected = $on ? $this->orders->pluck('id')->map(fn ($id) => (string) $id)->all() : [];
+    }
+
+    /**
+     * Tick every order that matches the current filters, across all pages (capped at 1000).
+     */
+    public function selectAllMatching(): void
+    {
+        $this->selected = $this->filtered()
+            ->when(OrderStatus::tryFrom($this->status), fn ($query, $status) => $query->where('status', $status->value))
+            ->limit(1000)->pluck('id')->map(fn ($id) => (string) $id)->all();
     }
 
     /**
@@ -135,7 +175,7 @@ new #[Layout('layouts::crm')] class extends Component
             $order->update(['status' => $target]);
         }
 
-        $this->notice = __('crm.orders.bulk_done', ['done' => $orders->count(), 'skipped' => $ids->count() - $orders->count()]);
+        $this->dispatch('notify', message: __('crm.orders.bulk_done', ['done' => $orders->count(), 'skipped' => $ids->count() - $orders->count()]), type: $orders->isEmpty() ? 'error' : 'success');
         $this->selected = [];
         unset($this->orders, $this->counts);
     }
@@ -178,16 +218,15 @@ new #[Layout('layouts::crm')] class extends Component
                 <option value="{{ $company->id }}" wire:key="company-{{ $company->id }}">{{ $company->name }}</option>
             @endforeach
         </select>
-        <input type="search" wire:model.live.debounce.300ms="search" placeholder="{{ __('crm.orders.search') }}" class="crm-input sm:max-w-xs">
+        <input type="search" data-search wire:model.live.debounce.300ms="search" placeholder="{{ __('crm.orders.search') }} ( / )" class="crm-input sm:max-w-xs">
     </div>
 
-    @if ($notice)
-        <p class="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{{ $notice }}</p>
-    @endif
-
     @if (count($selected) > 0)
-        <div class="crm-card flex flex-wrap items-center gap-2 px-4 py-3">
+        <div class="crm-card sticky bottom-4 z-20 flex flex-wrap items-center gap-2 px-4 py-3 shadow-lg ring-gold-400">
             <span class="text-sm font-semibold text-navy-800">{{ __('crm.orders.selected', ['count' => count($selected)]) }}</span>
+            @if (count($selected) < $this->orders->total())
+                <button type="button" wire:click="selectAllMatching" class="text-sm font-medium text-navy-700 underline hover:text-navy-950">{{ __('crm.orders.select_all_matching', ['count' => min(1000, $this->orders->total())]) }}</button>
+            @endif
             @foreach ([\App\Enums\OrderStatus::Accepted, \App\Enums\OrderStatus::Done, \App\Enums\OrderStatus::Sent] as $target)
                 <x-crm.confirm wire:key="bulk-{{ $target->value }}" action="applyStatus('{{ $target->value }}')" :message="__('crm.orders.bulk_confirm', ['count' => count($selected), 'status' => $target->label()])" class="crm-btn-secondary">→ {{ $target->label() }}</x-crm.confirm>
             @endforeach
@@ -196,30 +235,48 @@ new #[Layout('layouts::crm')] class extends Component
         </div>
     @endif
 
+    <div class="space-y-3" :class="{ 'crm-dense': dense }" x-data="{ dense: false }"
+         x-init="try { dense = localStorage.getItem('crm.dense') === '1' } catch (e) {}; $watch('dense', (value) => { try { localStorage.setItem('crm.dense', value ? '1' : '0') } catch (e) {} })"
+         x-on:keydown.window.slash.prevent="if (! ['INPUT', 'TEXTAREA', 'SELECT'].includes($event.target.tagName)) { document.querySelector('[data-search]')?.focus() }">
+    <div class="flex flex-wrap items-center justify-between gap-3 text-sm text-navy-600">
+        <p>{{ __('crm.orders.found', ['count' => $this->orders->total()]) }}</p>
+        <div class="flex items-center gap-3">
+            <label class="flex items-center gap-2">{{ __('crm.orders.per_page') }}
+                <select wire:model.live="perPage" class="crm-input !w-auto !py-1.5">
+                    @foreach ([25, 50, 100] as $size)
+                        <option value="{{ $size }}">{{ $size }}</option>
+                    @endforeach
+                </select>
+            </label>
+            <label class="flex cursor-pointer items-center gap-2"><input type="checkbox" x-model="dense"> {{ __('crm.orders.compact') }}</label>
+        </div>
+    </div>
+
     <div class="crm-card overflow-hidden">
         @if ($this->orders->isEmpty())
             <p class="p-10 text-center text-navy-600">{{ __('crm.orders.empty') }}</p>
         @else
-            <div class="overflow-x-auto">
+            <div class="crm-table-scroll">
                 <table class="min-w-full divide-y divide-navy-100">
                     <thead class="bg-navy-50/60">
                         <tr>
                             <th class="crm-th w-10"><input type="checkbox" aria-label="{{ __('crm.orders.select_all') }}" wire:click="selectPage($event.target.checked)" @checked(count($selected) > 0 && count($selected) === $this->orders->count())></th>
-                            <th class="crm-th">#</th>
-                            <th class="crm-th">{{ __('crm.orders.date') }}</th>
+                            @foreach (['id' => '#', 'date' => __('crm.orders.date')] as $column => $label)
+                                <x-crm.sort-th :column="$column" :sort="$sort" :dir="$dir">{{ $label }}</x-crm.sort-th>
+                            @endforeach
                             <th class="crm-th">{{ __('crm.orders.location') }}</th>
-                            <th class="crm-th">{{ __('crm.orders.positions') }}</th>
-                            <th class="crm-th text-right">{{ __('crm.orders.total') }}</th>
-                            <th class="crm-th">{{ __('crm.common.status') }}</th>
+                            <x-crm.sort-th column="positions" :sort="$sort" :dir="$dir">{{ __('crm.orders.positions') }}</x-crm.sort-th>
+                            <x-crm.sort-th column="total" :sort="$sort" :dir="$dir" class="text-right">{{ __('crm.orders.total') }}</x-crm.sort-th>
+                            <x-crm.sort-th column="status" :sort="$sort" :dir="$dir">{{ __('crm.common.status') }}</x-crm.sort-th>
                             <th class="crm-th">{{ __('crm.orders.signs') }}</th>
                             <th class="crm-th text-right">{{ __('crm.common.actions') }}</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-navy-100">
                         @foreach ($this->orders as $order)
-                            <tr wire:key="order-{{ $order->id }}" class="hover:bg-navy-50/40">
+                            <tr wire:key="order-{{ $order->id }}" @class(['cursor-pointer hover:bg-navy-50/60', 'bg-gold-400/10' => in_array((string) $order->id, array_map('strval', $selected), true)]) x-on:click="if (! $event.target.closest('a, button, input, label')) { Livewire.navigate('{{ route('crm.orders.show', $order) }}') }">
                                 <td class="crm-td"><input type="checkbox" value="{{ $order->id }}" wire:model.live="selected" aria-label="{{ __('crm.orders.select') }} #{{ $order->id }}"></td>
-                                <td class="crm-td font-mono text-xs">{{ $order->id }}</td>
+                                <td class="crm-td font-mono text-xs">{{ $order->displayNumber() }}@if ($order->one_c_number)<span class="block text-[10px] text-navy-600">#{{ $order->id }}</span>@endif</td>
                                 <td class="crm-td">{{ $order->order_date->format('d.m.Y') }}</td>
                                 <td class="crm-td">
                                     <p class="font-medium">{{ $order->location->company->name }}</p>
@@ -243,6 +300,7 @@ new #[Layout('layouts::crm')] class extends Component
                 </table>
             </div>
         @endif
+    </div>
     </div>
 
     {{ $this->orders->links() }}

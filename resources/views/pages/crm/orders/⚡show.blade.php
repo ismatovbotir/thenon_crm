@@ -35,7 +35,7 @@ new #[Layout('layouts::crm')] class extends Component
 
     public function rendering($view): void
     {
-        $view->title(__('crm.orders.order_no', ['id' => $this->orderId]));
+        $view->title(__('crm.orders.order_no', ['id' => $this->order->displayNumber()]));
     }
 
     #[Computed]
@@ -44,10 +44,19 @@ new #[Layout('layouts::crm')] class extends Component
         return Order::query()->with(['location.company', 'employee', 'lines.item'])->findOrFail($this->orderId);
     }
 
+    /**
+     * Once 1C has taken the order its lines belong to 1C: they change only through 1C's updates.
+     */
+    #[Computed]
+    public function lockedBy1c(): bool
+    {
+        return $this->order->synced_1c_at !== null;
+    }
+
     #[Computed]
     public function editable(): bool
     {
-        return ! in_array($this->order->status, [OrderStatus::Sent, OrderStatus::Delivered], true);
+        return ! $this->lockedBy1c && ! in_array($this->order->status, [OrderStatus::Sent, OrderStatus::Delivered], true);
     }
 
     /**
@@ -88,7 +97,7 @@ new #[Layout('layouts::crm')] class extends Component
 
     private function refreshOrder(): void
     {
-        unset($this->order, $this->editable, $this->transitions, $this->addableItems);
+        unset($this->order, $this->lockedBy1c, $this->editable, $this->transitions, $this->addableItems);
     }
 
     public function setStatus(string $status): void
@@ -130,10 +139,12 @@ new #[Layout('layouts::crm')] class extends Component
     }
 
     /**
-     * Mark a line active or inactive (for example when 1C cannot supply it). Allowed at any status.
+     * Mark a line active or inactive (for example when it cannot be supplied). Allowed at any status until 1C has the order.
      */
     public function toggleLine(int $lineId): void
     {
+        abort_if($this->lockedBy1c, 403);
+
         $line = $this->order->lines->firstWhere('id', $lineId) ?? abort(404);
 
         $line->update(['is_active' => ! $line->is_active]);
@@ -142,6 +153,8 @@ new #[Layout('layouts::crm')] class extends Component
 
     public function saveComment(int $lineId): void
     {
+        abort_if($this->lockedBy1c, 403);
+
         $line = $this->order->lines->firstWhere('id', $lineId) ?? abort(404);
 
         $this->validate(
@@ -204,7 +217,10 @@ new #[Layout('layouts::crm')] class extends Component
     <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
             <a href="{{ route('crm.orders.index', ['date' => $this->order->order_date->toDateString()]) }}" wire:navigate class="text-sm text-navy-600 hover:text-navy-900">&larr; {{ __('crm.orders.title') }}</a>
-            <h2 class="mt-1 text-2xl font-semibold text-navy-800">{{ __('crm.orders.order_no', ['id' => $this->order->id]) }}</h2>
+            <h2 class="mt-1 text-2xl font-semibold text-navy-800">{{ __('crm.orders.order_no', ['id' => $this->order->displayNumber()]) }}</h2>
+            @if ($this->order->one_c_number)
+                <p class="mt-1 text-xs text-navy-600">№ 1C · #{{ $this->order->id }}</p>
+            @endif
         </div>
         <div class="flex flex-wrap items-center gap-2">
             <a href="{{ route('crm.orders.print', $this->order) }}" target="_blank" class="crm-btn-secondary">{{ __('crm.orders.print') }}</a>
@@ -260,6 +276,9 @@ new #[Layout('layouts::crm')] class extends Component
     {{-- Lines --}}
     <div class="crm-card overflow-hidden">
         <h3 class="border-b border-navy-100 px-5 py-4 font-semibold text-navy-800">{{ __('crm.orders.lines') }}</h3>
+        @if ($this->lockedBy1c)
+            <p class="border-b border-navy-100 bg-amber-50 px-5 py-3 text-sm text-amber-800">{{ __('crm.orders.locked_by_1c') }}</p>
+        @endif
 
         @if ($this->order->lines->isEmpty())
             <p class="p-8 text-center text-sm text-navy-600">{{ __('crm.orders.no_lines') }}</p>
@@ -294,13 +313,19 @@ new #[Layout('layouts::crm')] class extends Component
                             <p class="font-semibold text-navy-800">{{ $line->quantity }}</p>
                         @endif
                         <p @class(['w-32 text-right font-semibold text-navy-800', 'line-through' => ! $line->is_active])>{{ $line->total() !== null ? Money::format($line->total()) : '—' }}</p>
-                        <button type="button" wire:click="toggleLine({{ $line->id }})" class="crm-btn-ghost">{{ $line->is_active ? __('crm.orders.line_deactivate') : __('crm.orders.line_activate') }}</button>
-                        <div class="w-full">
-                            <input type="text" maxlength="500" wire:model="comments.{{ $line->id }}" wire:change="saveComment({{ $line->id }})" placeholder="{{ __('crm.orders.comment') }}" aria-label="{{ __('crm.orders.comment') }}" class="crm-input py-1.5 text-sm">
-                            @error('comments.'.$line->id)
-                                <p class="mt-1 text-xs text-red-600">{{ $message }}</p>
-                            @enderror
-                        </div>
+                        @if ($this->lockedBy1c)
+                            @if ($line->comment)
+                                <p class="w-full text-sm text-navy-700">{{ $line->comment }}</p>
+                            @endif
+                        @else
+                            <button type="button" wire:click="toggleLine({{ $line->id }})" class="crm-btn-ghost">{{ $line->is_active ? __('crm.orders.line_deactivate') : __('crm.orders.line_activate') }}</button>
+                            <div class="w-full">
+                                <input type="text" maxlength="500" wire:model="comments.{{ $line->id }}" wire:change="saveComment({{ $line->id }})" placeholder="{{ __('crm.orders.comment') }}" aria-label="{{ __('crm.orders.comment') }}" class="crm-input py-1.5 text-sm">
+                                @error('comments.'.$line->id)
+                                    <p class="mt-1 text-xs text-red-600">{{ $message }}</p>
+                                @enderror
+                            </div>
+                        @endif
                     </li>
                 @endforeach
             </ul>

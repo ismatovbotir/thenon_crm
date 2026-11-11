@@ -131,6 +131,7 @@ new class extends Component
         }
 
         $this->showForm = false;
+        $this->dispatch('notify', message: __('crm.common.saved'));
         unset($this->locations);
     }
 
